@@ -4,7 +4,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { io, Socket } from "socket.io-client";
 import { create } from "zustand";
 
-const SOCKET_URL = "https://whisper-ijeje.sevalla.app";
+const SOCKET_URL = "https://chat-app-backend-zj3i.onrender.com";
 
 interface SocketState {
   socket: Socket | null;
