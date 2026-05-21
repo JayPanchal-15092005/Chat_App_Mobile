@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "chat-app",
+    "slug": "chatapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.ketan_panchal.chatapp"
     },
     "web": {
       "output": "static",
@@ -46,11 +47,20 @@
           "project": "chatapp",
           "organization": "jay-panchal"
         }
-      ]
+      ],
+      "@sentry/react-native",
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2d0589c7-1356-48a9-962d-eca5ff8d3b1b"
+      }
     }
   }
 }
