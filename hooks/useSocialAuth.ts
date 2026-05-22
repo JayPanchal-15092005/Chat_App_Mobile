@@ -1,4 +1,5 @@
 import { useSSO } from "@clerk/clerk-expo";
+import * as Linking from "expo-linking";
 import { useState } from "react";
 import { Alert } from "react-native";
 
@@ -11,7 +12,14 @@ function useAuthSocial() {
     setLoadingStrategy(strategy);
 
     try {
-      const { createdSessionId, setActive } = await startSSOFlow({ strategy });
+      // Explicitly set redirectUrl so Clerk always redirects to mobile://sso-callback
+      const redirectUrl = Linking.createURL("/sso-callback");
+
+      const { createdSessionId, setActive } = await startSSOFlow({
+        strategy,
+        redirectUrl,
+      });
+
       if (!createdSessionId || !setActive) {
         const provider = strategy === "oauth_google" ? "Google" : "Apple";
         Alert.alert(
@@ -38,3 +46,4 @@ function useAuthSocial() {
 }
 
 export default useAuthSocial;
+

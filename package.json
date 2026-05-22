@@ -41,6 +41,7 @@
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-get-random-values": "~1.11.0",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
@@ -55,5 +56,11 @@
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "expo-crypto": "~15.0.9"
+  },
+  "resolutions": {
+    "expo-crypto": "~15.0.9"
+  }
 }
