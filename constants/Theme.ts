@@ -62,6 +62,9 @@ export const ThemeContext = createContext<ThemeContextType>({
 
 // ─────────────────────────────────────────────
 // Theme Provider
+// Using React.createElement instead of JSX so this .ts file
+// doesn't cause a "Unexpected token" SyntaxError during EAS bundling.
+// (JSX syntax is only valid in .tsx files)
 // ─────────────────────────────────────────────
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -73,9 +76,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const colors = isDark ? DarkColors : LightColors;
 
-  return (
-    <ThemeContext.Provider value={{ colors, isDark, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
+  return React.createElement(
+    ThemeContext.Provider,
+    { value: { colors, isDark, toggleTheme } },
+    children,
   );
 }
