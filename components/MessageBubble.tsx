@@ -1,4 +1,4 @@
-import { Colors } from "@/constants/Colors";
+import { useTheme } from "@/hooks/useTheme";
 import { Message } from "@/types";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -9,6 +9,9 @@ function MessageBubble({
   message: Message;
   isFromMe: boolean;
 }) {
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
+
   return (
     <View
       style={[
@@ -35,44 +38,47 @@ function MessageBubble({
   );
 }
 
-// --- Standard StyleSheet ---
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    width: "100%",
-    marginBottom: 4, // Optional: gives a tiny bit of space between consecutive messages
-  },
-  alignRight: {
-    justifyContent: "flex-end", // Pushes the bubble to the right
-  },
-  alignLeft: {
-    justifyContent: "flex-start", // Keeps the bubble on the left
-  },
-  bubbleBase: {
-    maxWidth: "80%", // Replaces "max-w-[80%]"
-    paddingHorizontal: 12, // Replaces "px-3"
-    paddingVertical: 8, // Replaces "py-2"
-    borderRadius: 16, // Replaces "rounded-2xl"
-  },
-  bubbleFromMe: {
-    backgroundColor: Colors.primary.default,
-    borderBottomRightRadius: 4, // Replaces "rounded-br-sm" (gives it that classic chat tail look)
-  },
-  bubbleFromOther: {
-    backgroundColor: Colors.surface.card,
-    borderBottomLeftRadius: 4, // Replaces "rounded-bl-sm"
-    borderWidth: 1,
-    borderColor: Colors.surface.light,
-  },
-  textBase: {
-    fontSize: 14, // Replaces "text-sm"
-  },
-  textFromMe: {
-    color: Colors.surface.dark, // The text needs to be dark so it stands out against the primary color
-  },
-  textFromOther: {
-    color: Colors.foreground, // Standard white/light text for the dark gray bubbles
-  },
-});
+// ─────────────────────────────────────────────
+// Dynamic styles
+// ─────────────────────────────────────────────
+const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
+  StyleSheet.create({
+    container: {
+      flexDirection: "row",
+      width: "100%",
+      marginBottom: 4,
+    },
+    alignRight: {
+      justifyContent: "flex-end",
+    },
+    alignLeft: {
+      justifyContent: "flex-start",
+    },
+    bubbleBase: {
+      maxWidth: "80%",
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 16,
+    },
+    bubbleFromMe: {
+      backgroundColor: colors.primary.default,
+      borderBottomRightRadius: 4,
+    },
+    bubbleFromOther: {
+      backgroundColor: colors.surface.card,
+      borderBottomLeftRadius: 4,
+      borderWidth: 1,
+      borderColor: colors.surface.light,
+    },
+    textBase: {
+      fontSize: 14,
+    },
+    textFromMe: {
+      color: colors.surface.dark,
+    },
+    textFromOther: {
+      color: colors.foreground,
+    },
+  });
 
 export default MessageBubble;

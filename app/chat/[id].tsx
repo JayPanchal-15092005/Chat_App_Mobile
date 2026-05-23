@@ -1,6 +1,6 @@
 import EmptyUI from "@/components/EmptyUI";
 import MessageBubble from "@/components/MessageBubble";
-import { Colors } from "@/constants/Colors";
+import { useTheme } from "@/hooks/useTheme";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useMessages } from "@/hooks/useMessages";
 import { useSocketStore } from "@/lib/socket";
@@ -10,15 +10,15 @@ import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -41,6 +41,7 @@ const ChatDetailScreen = () => {
   const [isSending, setIsSending] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
+  const { colors } = useTheme();
   const { data: currentUser } = useCurrentUser();
   const { data: messages, isLoading } = useMessages(chatId);
 
@@ -83,21 +84,17 @@ const ChatDetailScreen = () => {
 
       if (!isConnected || !chatId) return;
 
-      // send typing start
       if (text.length > 0) {
         sendTyping(chatId, true);
 
-        // clear existing timeout
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current);
         }
 
-        // stop typing after 2 seconds of no input
         typingTimeoutRef.current = setTimeout(() => {
           sendTyping(chatId, false);
         }, 2000);
       } else {
-        // text cleared, stop typing
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current);
         }
@@ -112,7 +109,6 @@ const ChatDetailScreen = () => {
     if (!messageText.trim() || isSending || !isConnected || !currentUser)
       return;
 
-    // stop typing indicator
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
@@ -133,6 +129,8 @@ const ChatDetailScreen = () => {
     }, 100);
   };
 
+  const styles = makeStyles(colors);
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       {/* Header */}
@@ -144,7 +142,7 @@ const ChatDetailScreen = () => {
           <Ionicons
             name="arrow-back"
             size={24}
-            color={Colors.primary.default}
+            color={colors.primary.default}
           />
         </Pressable>
 
@@ -175,7 +173,7 @@ const ChatDetailScreen = () => {
             <Ionicons
               name="call-outline"
               size={20}
-              color={Colors.mutedForeground}
+              color={colors.mutedForeground}
             />
           </Pressable>
           <Pressable
@@ -187,7 +185,7 @@ const ChatDetailScreen = () => {
             <Ionicons
               name="videocam-outline"
               size={20}
-              color={Colors.mutedForeground}
+              color={colors.mutedForeground}
             />
           </Pressable>
         </View>
@@ -202,14 +200,14 @@ const ChatDetailScreen = () => {
         <View style={styles.mainContainer}>
           {isLoading ? (
             <View style={styles.centerContainer}>
-              <ActivityIndicator size="large" color={Colors.primary.default} />
+              <ActivityIndicator size="large" color={colors.primary.default} />
             </View>
           ) : !messages || messages.length === 0 ? (
             <EmptyUI
               title="No messages yet"
               subtitle="Start the conversation!"
               iconName="chatbubbles-outline"
-              iconColor={Colors.subtleForeground}
+              iconColor={colors.subtleForeground}
               iconSize={64}
             />
           ) : (
@@ -246,12 +244,12 @@ const ChatDetailScreen = () => {
                   pressed && styles.pressedState,
                 ]}
               >
-                <Ionicons name="add" size={22} color={Colors.primary.default} />
+                <Ionicons name="add" size={22} color={colors.primary.default} />
               </Pressable>
 
               <TextInput
                 placeholder="Type a message"
-                placeholderTextColor={Colors.subtleForeground}
+                placeholderTextColor={colors.subtleForeground}
                 style={styles.textInput}
                 multiline
                 value={messageText}
@@ -271,9 +269,9 @@ const ChatDetailScreen = () => {
                 disabled={!messageText.trim() || isSending}
               >
                 {isSending ? (
-                  <ActivityIndicator size="small" color={Colors.surface.dark} />
+                  <ActivityIndicator size="small" color={colors.surface.dark} />
                 ) : (
-                  <Ionicons name="send" size={18} color={Colors.surface.dark} />
+                  <Ionicons name="send" size={18} color={colors.surface.dark} />
                 )}
               </Pressable>
             </View>
@@ -284,123 +282,126 @@ const ChatDetailScreen = () => {
   );
 };
 
-// --- Standard StyleSheet ---
-const styles = StyleSheet.create({
-  flex1: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.surface.default,
-  },
-  pressedState: {
-    opacity: 0.7,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: Colors.surface.default,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.surface.light,
-  },
-  headerInfo: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    marginLeft: 8,
-  },
-  headerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-  },
-  headerTextWrapper: {
-    marginLeft: 12, // Replaces "ml-3"
-  },
-  headerName: {
-    color: Colors.foreground,
-    fontWeight: "600",
-    fontSize: 16, // Replaces "text-base"
-  },
-  headerStatus: {
-    fontSize: 12, // Replaces "text-xs"
-  },
-  textPrimary: {
-    color: Colors.primary.default,
-  },
-  textMuted: {
-    color: Colors.mutedForeground,
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12, // Replaces "gap-3" (3 * 4 = 12px)
-  },
-  actionButton: {
-    width: 36, // Replaces "w-9"
-    height: 36, // Replaces "h-9"
-    borderRadius: 18, // Replaces "rounded-full"
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  mainContainer: {
-    flex: 1,
-    backgroundColor: Colors.surface.default,
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8, // Adds spacing between message bubbles natively
-  },
-  inputContainer: {
-    paddingHorizontal: 12, // Replaces "px-3"
-    paddingBottom: 12, // Replaces "pb-3"
-    paddingTop: 8, // Replaces "pt-2"
-    backgroundColor: Colors.surface.default,
-    borderTopWidth: 1,
-    borderTopColor: Colors.surface.light,
-  },
-  inputWrapper: {
-    flexDirection: "row",
-    alignItems: "flex-end", // Aligns icons to the bottom when text area expands
-    backgroundColor: Colors.surface.card,
-    borderRadius: 24, // Replaces "rounded-3xl"
-    paddingHorizontal: 12, // Replaces "px-3"
-    paddingVertical: 6, // Replaces "py-1.5"
-    gap: 8, // Replaces "gap-2"
-  },
-  addButton: {
-    width: 32, // Replaces "w-8"
-    height: 32, // Replaces "h-8"
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  textInput: {
-    flex: 1,
-    color: Colors.foreground,
-    fontSize: 14, // Replaces "text-sm"
-    marginBottom: 8, // Replaces "mb-2" to align with the icons at the bottom
-    maxHeight: 100, // Matches inline style
-  },
-  sendButton: {
-    width: 32, // Replaces "w-8"
-    height: 32, // Replaces "h-8"
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.primary.default,
-  },
-  sendButtonDisabled: {
-    opacity: 0.4, // Visually dims the send button when input is empty
-  },
-});
+// ─────────────────────────────────────────────
+// Dynamic styles
+// ─────────────────────────────────────────────
+const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
+  StyleSheet.create({
+    flex1: {
+      flex: 1,
+    },
+    safeArea: {
+      flex: 1,
+      backgroundColor: colors.surface.default,
+    },
+    pressedState: {
+      opacity: 0.7,
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      backgroundColor: colors.surface.default,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.surface.light,
+    },
+    headerInfo: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      marginLeft: 8,
+    },
+    headerAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+    },
+    headerTextWrapper: {
+      marginLeft: 12,
+    },
+    headerName: {
+      color: colors.foreground,
+      fontWeight: "600",
+      fontSize: 16,
+    },
+    headerStatus: {
+      fontSize: 12,
+    },
+    textPrimary: {
+      color: colors.primary.default,
+    },
+    textMuted: {
+      color: colors.mutedForeground,
+    },
+    headerActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    actionButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    mainContainer: {
+      flex: 1,
+      backgroundColor: colors.surface.default,
+    },
+    centerContainer: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    scrollContent: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      gap: 8,
+    },
+    inputContainer: {
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      paddingTop: 8,
+      backgroundColor: colors.surface.default,
+      borderTopWidth: 1,
+      borderTopColor: colors.surface.light,
+    },
+    inputWrapper: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      backgroundColor: colors.surface.card,
+      borderRadius: 24,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      gap: 8,
+    },
+    addButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    textInput: {
+      flex: 1,
+      color: colors.foreground,
+      fontSize: 14,
+      marginBottom: 8,
+      maxHeight: 100,
+    },
+    sendButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.primary.default,
+    },
+    sendButtonDisabled: {
+      opacity: 0.4,
+    },
+  });
 
 export default ChatDetailScreen;

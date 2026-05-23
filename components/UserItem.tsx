@@ -1,4 +1,4 @@
-import { Colors } from "@/constants/Colors";
+import { useTheme } from "@/hooks/useTheme";
 import type { User } from "@/types";
 import { Image } from "expo-image";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -10,6 +10,9 @@ type UserItemProps = {
 };
 
 function UserItem({ user, isOnline, onPress }: UserItemProps) {
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -36,61 +39,62 @@ function UserItem({ user, isOnline, onPress }: UserItemProps) {
   );
 }
 
-// --- Standard StyleSheet ---
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10, // Replaces "py-2.5" (2.5 * 4px = 10px)
-  },
-  containerPressed: {
-    opacity: 0.7, // Replaces "active:opacity-70"
-  },
-  avatarContainer: {
-    // position: "relative" is default in React Native
-  },
-  avatarImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24, // Replaces "borderRadius: 999" (half of width/height)
-  },
-  onlineIndicator: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 14, // Replaces "w-3.5" (3.5 * 4px = 14px)
-    height: 14, // Replaces "h-3.5"
-    backgroundColor: "#22C55E", // Tailwind green-500
-    borderRadius: 7, // half of width/height
-    borderWidth: 2, // Replaces "border-[2px]"
-    borderColor: Colors.surface.default, // Replaces "border-surface"
-  },
-  infoContainer: {
-    flex: 1,
-    marginLeft: 12, // Replaces "ml-3"
-    borderBottomWidth: 1, // Replaces "border-b"
-    borderBottomColor: Colors.surface.light, // Replaces "border-surface-light"
-    paddingBottom: 8, // Replaces "pb-2"
-  },
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  nameText: {
-    color: Colors.foreground,
-    fontWeight: "500", // Replaces "font-medium"
-  },
-  onlineText: {
-    fontSize: 12, // Replaces "text-xs"
-    color: Colors.primary.default,
-    fontWeight: "500", // Replaces "font-medium"
-  },
-  emailText: {
-    fontSize: 12, // Replaces "text-xs"
-    color: Colors.subtleForeground,
-    marginTop: 2, // Replaces "mt-0.5"
-  },
-});
+// ─────────────────────────────────────────────
+// Dynamic styles
+// ─────────────────────────────────────────────
+const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
+  StyleSheet.create({
+    container: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 10,
+    },
+    containerPressed: {
+      opacity: 0.7,
+    },
+    avatarContainer: {},
+    avatarImage: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+    },
+    onlineIndicator: {
+      position: "absolute",
+      bottom: 0,
+      right: 0,
+      width: 14,
+      height: 14,
+      backgroundColor: "#22C55E",
+      borderRadius: 7,
+      borderWidth: 2,
+      borderColor: colors.surface.default,
+    },
+    infoContainer: {
+      flex: 1,
+      marginLeft: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.surface.light,
+      paddingBottom: 8,
+    },
+    nameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    nameText: {
+      color: colors.foreground,
+      fontWeight: "500",
+    },
+    onlineText: {
+      fontSize: 12,
+      color: colors.primary.default,
+      fontWeight: "500",
+    },
+    emailText: {
+      fontSize: 12,
+      color: colors.subtleForeground,
+      marginTop: 2,
+    },
+  });
 
 export default UserItem;

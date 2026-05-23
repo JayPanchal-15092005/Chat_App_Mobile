@@ -9,7 +9,16 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "distribution": "internal"
+      },
+      "env": {
+        "SENTRY_AUTH_TOKEN": "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",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_c3VpdGFibGUtcm9iaW4tMi5jbGVyay5hY2NvdW50cy5kZXYk"
+      },
+      "channel": "preview"
     },
     "production": {
       "autoIncrement": true

@@ -1,4 +1,4 @@
-import { Colors } from "@/constants/Colors";
+import { useTheme } from "@/hooks/useTheme";
 import { useSocketStore } from "@/lib/socket";
 import { Chat } from "@/types";
 import { formatDistanceToNow } from "date-fns";
@@ -7,12 +7,15 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 const ChatItem = ({ chat, onPress }: { chat: Chat; onPress: () => void }) => {
   const participant = chat.participant;
+  const { colors } = useTheme();
 
   const { onlineUsers, typingUsers, unreadChats } = useSocketStore();
 
   const isOnline = onlineUsers.has(participant._id);
   const isTyping = typingUsers.get(chat._id) === participant._id;
   const hasUnread = unreadChats.has(chat._id);
+
+  const styles = makeStyles(colors);
 
   return (
     <Pressable
@@ -72,93 +75,93 @@ const ChatItem = ({ chat, onPress }: { chat: Chat; onPress: () => void }) => {
   );
 };
 
-// --- Standard StyleSheet ---
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12, // Replaces "py-3"
-  },
-  containerPressed: {
-    opacity: 0.7, // Replaces "active:opacity-70"
-  },
-  avatarWrapper: {
-    // position: "relative" is default in React Native
-  },
-  avatarImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 28, // Replaces "borderRadius: 999" (half of width/height for a perfect circle)
-  },
-  onlineIndicator: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 16, // Replaces "size-4"
-    height: 16, // Replaces "size-4"
-    backgroundColor: "#22C55E", // Tailwind green-500
-    borderRadius: 8, // rounded-full
-    borderWidth: 3, // border-[3px]
-    borderColor: Colors.surface.default, // border-surface
-  },
-  chatInfo: {
-    flex: 1,
-    marginLeft: 16, // Replaces "ml-4"
-  },
-  topRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  nameText: {
-    fontSize: 16, // Replaces "text-base"
-    fontWeight: "500", // Replaces "font-medium"
-  },
-  textPrimary: {
-    color: Colors.primary.default,
-  },
-  textForeground: {
-    color: Colors.foreground,
-  },
-  timeWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8, // Replaces "gap-2"
-  },
-  unreadDot: {
-    width: 10, // Replaces "w-2.5"
-    height: 10, // Replaces "h-2.5"
-    backgroundColor: Colors.primary.default,
-    borderRadius: 5, // rounded-full
-  },
-  timeText: {
-    fontSize: 12, // Replaces "text-xs"
-    color: Colors.subtleForeground,
-  },
-  bottomRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 4, // Replaces "mt-1"
-  },
-  typingText: {
-    fontSize: 14, // Replaces "text-sm"
-    color: Colors.primary.default,
-    fontStyle: "italic", // Replaces "italic"
-  },
-  messageText: {
-    fontSize: 14, // Replaces "text-sm"
-    flex: 1, // Replaces "flex-1"
-    marginRight: 12, // Replaces "mr-3"
-  },
-  messageTextUnread: {
-    color: Colors.foreground,
-    fontWeight: "500", // Replaces "font-medium"
-  },
-  messageTextRead: {
-    color: Colors.subtleForeground,
-    // normal weight is default
-  },
-});
+// ─────────────────────────────────────────────
+// Dynamic styles
+// ─────────────────────────────────────────────
+const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
+  StyleSheet.create({
+    container: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 12,
+    },
+    containerPressed: {
+      opacity: 0.7,
+    },
+    avatarWrapper: {},
+    avatarImage: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+    },
+    onlineIndicator: {
+      position: "absolute",
+      bottom: 0,
+      right: 0,
+      width: 16,
+      height: 16,
+      backgroundColor: "#22C55E",
+      borderRadius: 8,
+      borderWidth: 3,
+      borderColor: colors.surface.default,
+    },
+    chatInfo: {
+      flex: 1,
+      marginLeft: 16,
+    },
+    topRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    nameText: {
+      fontSize: 16,
+      fontWeight: "500",
+    },
+    textPrimary: {
+      color: colors.primary.default,
+    },
+    textForeground: {
+      color: colors.foreground,
+    },
+    timeWrapper: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    unreadDot: {
+      width: 10,
+      height: 10,
+      backgroundColor: colors.primary.default,
+      borderRadius: 5,
+    },
+    timeText: {
+      fontSize: 12,
+      color: colors.subtleForeground,
+    },
+    bottomRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 4,
+    },
+    typingText: {
+      fontSize: 14,
+      color: colors.primary.default,
+      fontStyle: "italic",
+    },
+    messageText: {
+      fontSize: 14,
+      flex: 1,
+      marginRight: 12,
+    },
+    messageTextUnread: {
+      color: colors.foreground,
+      fontWeight: "500",
+    },
+    messageTextRead: {
+      color: colors.subtleForeground,
+    },
+  });
 
 export default ChatItem;
