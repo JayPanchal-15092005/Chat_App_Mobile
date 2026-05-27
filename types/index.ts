@@ -12,11 +12,27 @@ export interface MessageSender {
   avatar: string;
 }
 
+export interface MessageReaction {
+  userId: string;
+  emoji: string;
+}
+
+export interface ReplyToMessage {
+  _id: string;
+  text: string;
+  sender: string | MessageSender;
+}
+
 export interface Message {
   _id: string;
   chat: string;
   sender: MessageSender | string;
   text: string;
+  type: "text";
+  status: "sent" | "delivered" | "seen";
+  replyTo?: ReplyToMessage | null;
+  reactions: MessageReaction[];
+  isEdited: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,4 +50,5 @@ export interface Chat {
   lastMessage: ChatLastMessage | null;
   lastMessageAt: string;
   createdAt: string;
+  isPinned: boolean;
 }

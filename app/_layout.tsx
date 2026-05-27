@@ -2,6 +2,7 @@ import AuthSync from "@/components/AuthSync";
 import SocketConnection from "@/components/SocketConnection";
 import { ThemeProvider } from "@/constants/Theme";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useAuth } from "@clerk/clerk-expo";
 import { ClerkProvider } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -10,7 +11,9 @@ import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import "react-native-get-random-values"; // MUST BE THE VERY FIRST IMPORT!
 
-// Create the Token Cache for Mobile
+// ─────────────────────────────────────────────
+// Token cache
+// ─────────────────────────────────────────────
 const tokenCache = {
   async getToken(key: string) {
     try {
@@ -28,6 +31,9 @@ const tokenCache = {
   },
 };
 
+// ─────────────────────────────────────────────
+// Sentry
+// ─────────────────────────────────────────────
 Sentry.init({
   dsn: "https://72de6216171a67c2fade61ea7b5063bf@o4509388699467776.ingest.de.sentry.io/4511398826803280",
   sendDefaultPii: true,
@@ -46,14 +52,29 @@ Sentry.init({
 
 const queryClient = new QueryClient();
 
-// Inner component so hooks (useNotifications) can access ClerkProvider context
-function AppContent() {
+// ─────────────────────────────────────────────
+// PushNotificationSetup
+// Separate component so it only calls useNotifications() once the
+// user is authenticated (isSignedIn=true), guaranteeing that
+// Clerk's getToken() returns a valid JWT for the PATCH /users/fcm-token call.
+// ─────────────────────────────────────────────
+function PushNotificationSetup() {
   useNotifications();
+  return null;
+}
+
+// ─────────────────────────────────────────────
+// AppContent — rendered inside all providers
+// ─────────────────────────────────────────────
+function AppContent() {
+  const { isSignedIn } = useAuth();
 
   return (
     <>
       <AuthSync />
       <SocketConnection />
+      {/* Only mount PushNotificationSetup after sign-in so apiWithAuth works */}
+      {isSignedIn && <PushNotificationSetup />}
       <Stack
         screenOptions={{
           headerShown: false,
@@ -82,6 +103,9 @@ function AppContent() {
   );
 }
 
+// ─────────────────────────────────────────────
+// Root layout
+// ─────────────────────────────────────────────
 export default Sentry.wrap(function RootLayout() {
   return (
     <ClerkProvider

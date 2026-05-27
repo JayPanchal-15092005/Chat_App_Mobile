@@ -1,11 +1,20 @@
 import { useTheme } from "@/hooks/useTheme";
 import { useSocketStore } from "@/lib/socket";
 import { Chat } from "@/types";
+import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNow } from "date-fns";
 import { Image } from "expo-image";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-const ChatItem = ({ chat, onPress }: { chat: Chat; onPress: () => void }) => {
+const ChatItem = ({
+  chat,
+  onPress,
+  onLongPress,
+}: {
+  chat: Chat;
+  onPress: () => void;
+  onLongPress?: () => void;
+}) => {
   const participant = chat.participant;
   const { colors } = useTheme();
 
@@ -14,6 +23,7 @@ const ChatItem = ({ chat, onPress }: { chat: Chat; onPress: () => void }) => {
   const isOnline = onlineUsers.has(participant._id);
   const isTyping = typingUsers.get(chat._id) === participant._id;
   const hasUnread = unreadChats.has(chat._id);
+  const isPinned = chat.isPinned ?? false;
 
   const styles = makeStyles(colors);
 
@@ -21,35 +31,46 @@ const ChatItem = ({ chat, onPress }: { chat: Chat; onPress: () => void }) => {
     <Pressable
       style={({ pressed }) => [
         styles.container,
+        isPinned && styles.containerPinned,
         pressed && styles.containerPressed,
       ]}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
     >
-      {/* avatar & online indicator */}
+      {/* Pin indicator */}
+      {isPinned && (
+        <View style={styles.pinBadge}>
+          <Ionicons name="pin" size={11} color={colors.primary.default} />
+        </View>
+      )}
+
+      {/* Avatar & online indicator */}
       <View style={styles.avatarWrapper}>
         <Image source={participant.avatar} style={styles.avatarImage} />
         {isOnline && <View style={styles.onlineIndicator} />}
       </View>
 
-      {/* chat info */}
+      {/* Chat info */}
       <View style={styles.chatInfo}>
         <View style={styles.topRow}>
-          <Text
-            style={[
-              styles.nameText,
-              hasUnread ? styles.textPrimary : styles.textForeground,
-            ]}
-          >
-            {participant.name}
-          </Text>
+          <View style={styles.nameRow}>
+            <Text
+              style={[
+                styles.nameText,
+                hasUnread ? styles.textPrimary : styles.textForeground,
+              ]}
+              numberOfLines={1}
+            >
+              {participant.name}
+            </Text>
+          </View>
 
           <View style={styles.timeWrapper}>
             {hasUnread && <View style={styles.unreadDot} />}
             <Text style={styles.timeText}>
               {chat.lastMessageAt
-                ? formatDistanceToNow(new Date(chat.lastMessageAt), {
-                    addSuffix: false,
-                  })
+                ? formatDistanceToNow(new Date(chat.lastMessageAt), { addSuffix: false })
                 : ""}
             </Text>
           </View>
@@ -84,11 +105,25 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       flexDirection: "row",
       alignItems: "center",
       paddingVertical: 12,
+      paddingHorizontal: 2,
+      borderRadius: 12,
+      position: "relative",
+    },
+    containerPinned: {
+      backgroundColor: `${colors.primary.default}10`,
     },
     containerPressed: {
       opacity: 0.7,
     },
-    avatarWrapper: {},
+    pinBadge: {
+      position: "absolute",
+      top: 8,
+      right: 4,
+      zIndex: 1,
+    },
+    avatarWrapper: {
+      position: "relative",
+    },
     avatarImage: {
       width: 56,
       height: 56,
@@ -113,6 +148,10 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+    },
+    nameRow: {
+      flex: 1,
+      marginRight: 8,
     },
     nameText: {
       fontSize: 16,
@@ -153,7 +192,7 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
     messageText: {
       fontSize: 14,
       flex: 1,
-      marginRight: 12,
+      marginRight: 24,
     },
     messageTextUnread: {
       color: colors.foreground,

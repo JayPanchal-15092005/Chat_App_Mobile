@@ -1,10 +1,11 @@
 import EmptyUI from "@/components/EmptyUI";
 import MessageBubble from "@/components/MessageBubble";
+import ReplyPreview from "@/components/ReplyPreview";
 import { useTheme } from "@/hooks/useTheme";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useMessages } from "@/hooks/useMessages";
 import { useSocketStore } from "@/lib/socket";
-import { MessageSender } from "@/types";
+import { Message, MessageSender, ReplyToMessage } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -39,6 +40,8 @@ const ChatDetailScreen = () => {
 
   const [messageText, setMessageText] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+
   const scrollViewRef = useRef<ScrollView>(null);
 
   const { colors } = useTheme();
@@ -53,6 +56,8 @@ const ChatDetailScreen = () => {
     isConnected,
     onlineUsers,
     typingUsers,
+    markDelivered,
+    markSeen,
   } = useSocketStore();
 
   const isOnline = participantId ? onlineUsers.has(participantId) : false;
@@ -60,44 +65,39 @@ const ChatDetailScreen = () => {
 
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // join chat room on mount, leave on unmount
+  // Join chat room & mark delivered/seen on mount
   useEffect(() => {
-    if (chatId && isConnected) joinChat(chatId);
-
+    if (chatId && isConnected) {
+      joinChat(chatId);
+      markDelivered(chatId);
+      markSeen(chatId);
+    }
     return () => {
       if (chatId) leaveChat(chatId);
     };
-  }, [chatId, isConnected, joinChat, leaveChat]);
+  }, [chatId, isConnected, joinChat, leaveChat, markDelivered, markSeen]);
 
-  // scroll to bottom when new messages arrive
+  // Mark seen when new messages arrive while chat is open
   useEffect(() => {
-    if (messages && messages.length > 0) {
+    if (messages && messages.length > 0 && isConnected) {
+      markSeen(chatId);
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [messages]);
+  }, [messages, chatId, isConnected, markSeen]);
 
   const handleTyping = useCallback(
     (text: string) => {
       setMessageText(text);
-
       if (!isConnected || !chatId) return;
 
       if (text.length > 0) {
         sendTyping(chatId, true);
-
-        if (typingTimeoutRef.current) {
-          clearTimeout(typingTimeoutRef.current);
-        }
-
-        typingTimeoutRef.current = setTimeout(() => {
-          sendTyping(chatId, false);
-        }, 2000);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => sendTyping(chatId, false), 2000);
       } else {
-        if (typingTimeoutRef.current) {
-          clearTimeout(typingTimeoutRef.current);
-        }
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         sendTyping(chatId, false);
       }
     },
@@ -105,29 +105,33 @@ const ChatDetailScreen = () => {
   );
 
   const handleSend = () => {
-    console.log({ isSending, isConnected, currentUser, messageText });
-    if (!messageText.trim() || isSending || !isConnected || !currentUser)
-      return;
+    if (!messageText.trim() || isSending || !isConnected || !currentUser) return;
 
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     sendTyping(chatId, false);
 
     setIsSending(true);
-    sendMessage(chatId, messageText.trim(), {
-      _id: currentUser._id,
-      name: currentUser.name,
-      email: currentUser.email,
-      avatar: currentUser.avatar,
-    });
+    sendMessage(
+      chatId,
+      messageText.trim(),
+      {
+        _id: currentUser._id,
+        name: currentUser.name,
+        email: currentUser.email,
+        avatar: currentUser.avatar,
+      },
+      replyingTo?._id
+    );
     setMessageText("");
+    setReplyingTo(null);
     setIsSending(false);
 
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
   };
+
+  const handleReply = useCallback((msg: Message) => {
+    setReplyingTo(msg);
+  }, []);
 
   const styles = makeStyles(colors);
 
@@ -139,11 +143,7 @@ const ChatDetailScreen = () => {
           onPress={() => router.back()}
           style={({ pressed }) => pressed && styles.pressedState}
         >
-          <Ionicons
-            name="arrow-back"
-            size={24}
-            color={colors.primary.default}
-          />
+          <Ionicons name="arrow-back" size={24} color={colors.primary.default} />
         </Pressable>
 
         <View style={styles.headerInfo}>
@@ -170,11 +170,7 @@ const ChatDetailScreen = () => {
               pressed && styles.pressedState,
             ]}
           >
-            <Ionicons
-              name="call-outline"
-              size={20}
-              color={colors.mutedForeground}
-            />
+            <Ionicons name="call-outline" size={20} color={colors.mutedForeground} />
           </Pressable>
           <Pressable
             style={({ pressed }) => [
@@ -182,16 +178,12 @@ const ChatDetailScreen = () => {
               pressed && styles.pressedState,
             ]}
           >
-            <Ionicons
-              name="videocam-outline"
-              size={20}
-              color={colors.mutedForeground}
-            />
+            <Ionicons name="videocam-outline" size={20} color={colors.mutedForeground} />
           </Pressable>
         </View>
       </View>
 
-      {/* Message + Keyboard input */}
+      {/* Message list + Input */}
       <KeyboardAvoidingView
         style={styles.flex1}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -214,25 +206,40 @@ const ChatDetailScreen = () => {
             <ScrollView
               ref={scrollViewRef}
               contentContainerStyle={styles.scrollContent}
-              onContentSizeChange={() => {
-                scrollViewRef.current?.scrollToEnd({ animated: false });
-              }}
+              onContentSizeChange={() =>
+                scrollViewRef.current?.scrollToEnd({ animated: false })
+              }
             >
               {messages.map((message) => {
                 const senderId = (message.sender as MessageSender)._id;
-                const isFromMe = currentUser
-                  ? senderId === currentUser._id
-                  : false;
+                const isFromMe = currentUser ? senderId === currentUser._id : false;
 
                 return (
                   <MessageBubble
                     key={message._id}
                     message={message}
                     isFromMe={isFromMe}
+                    chatId={chatId}
+                    currentUserId={currentUser?._id ?? ""}
+                    onReply={handleReply}
                   />
                 );
               })}
             </ScrollView>
+          )}
+
+          {/* Reply preview */}
+          {replyingTo && (
+            <ReplyPreview
+              replyTo={
+                {
+                  _id: replyingTo._id,
+                  text: replyingTo.text,
+                  sender: replyingTo.sender,
+                } as ReplyToMessage
+              }
+              onCancel={() => setReplyingTo(null)}
+            />
           )}
 
           {/* Input bar */}
@@ -261,8 +268,7 @@ const ChatDetailScreen = () => {
               <Pressable
                 style={({ pressed }) => [
                   styles.sendButton,
-                  (!messageText.trim() || isSending) &&
-                    styles.sendButtonDisabled,
+                  (!messageText.trim() || isSending) && styles.sendButtonDisabled,
                   pressed && styles.pressedState,
                 ]}
                 onPress={handleSend}
@@ -287,16 +293,9 @@ const ChatDetailScreen = () => {
 // ─────────────────────────────────────────────
 const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
   StyleSheet.create({
-    flex1: {
-      flex: 1,
-    },
-    safeArea: {
-      flex: 1,
-      backgroundColor: colors.surface.default,
-    },
-    pressedState: {
-      opacity: 0.7,
-    },
+    flex1: { flex: 1 },
+    safeArea: { flex: 1, backgroundColor: colors.surface.default },
+    pressedState: { opacity: 0.7 },
     header: {
       flexDirection: "row",
       alignItems: "center",
@@ -312,33 +311,13 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       alignItems: "center",
       marginLeft: 8,
     },
-    headerAvatar: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-    },
-    headerTextWrapper: {
-      marginLeft: 12,
-    },
-    headerName: {
-      color: colors.foreground,
-      fontWeight: "600",
-      fontSize: 16,
-    },
-    headerStatus: {
-      fontSize: 12,
-    },
-    textPrimary: {
-      color: colors.primary.default,
-    },
-    textMuted: {
-      color: colors.mutedForeground,
-    },
-    headerActions: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-    },
+    headerAvatar: { width: 40, height: 40, borderRadius: 20 },
+    headerTextWrapper: { marginLeft: 12 },
+    headerName: { color: colors.foreground, fontWeight: "600", fontSize: 16 },
+    headerStatus: { fontSize: 12 },
+    textPrimary: { color: colors.primary.default },
+    textMuted: { color: colors.mutedForeground },
+    headerActions: { flexDirection: "row", alignItems: "center", gap: 12 },
     actionButton: {
       width: 36,
       height: 36,
@@ -346,19 +325,12 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       alignItems: "center",
       justifyContent: "center",
     },
-    mainContainer: {
-      flex: 1,
-      backgroundColor: colors.surface.default,
-    },
-    centerContainer: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-    },
+    mainContainer: { flex: 1, backgroundColor: colors.surface.default },
+    centerContainer: { flex: 1, alignItems: "center", justifyContent: "center" },
     scrollContent: {
       paddingHorizontal: 16,
       paddingVertical: 12,
-      gap: 8,
+      gap: 4,
     },
     inputContainer: {
       paddingHorizontal: 12,
@@ -399,9 +371,7 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       justifyContent: "center",
       backgroundColor: colors.primary.default,
     },
-    sendButtonDisabled: {
-      opacity: 0.4,
-    },
+    sendButtonDisabled: { opacity: 0.4 },
   });
 
 export default ChatDetailScreen;
