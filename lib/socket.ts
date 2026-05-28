@@ -19,7 +19,7 @@ interface SocketState {
   disconnect: () => void;
   joinChat: (chatId: string) => void;
   leaveChat: (chatId: string) => void;
-  sendMessage: (chatId: string, text: string, currentUser: MessageSender, replyToId?: string) => void;
+  sendMessage: (chatId: string, text: string, currentUser: MessageSender, replyToId?: string, type?: "text" | "image" | "voice", mediaUrl?: string) => void;
   sendTyping: (chatId: string, isTyping: boolean) => void;
   markDelivered: (chatId: string) => void;
   markSeen: (chatId: string) => void;
@@ -216,7 +216,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     if (socket?.connected) socket.emit("leave-chat", chatId);
   },
 
-  sendMessage: (chatId, text, currentUser, replyToId) => {
+  sendMessage: (chatId, text, currentUser, replyToId, type = "text", mediaUrl = "") => {
     const { socket, queryClient } = get();
     if (!socket?.connected || !queryClient) return;
 
@@ -226,7 +226,8 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       chat: chatId,
       sender: currentUser,
       text,
-      type: "text",
+      type,
+      mediaUrl,
       status: "sent",
       replyTo: null,
       reactions: [],
@@ -240,7 +241,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       return [...old, optimisticMessage];
     });
 
-    socket.emit("send-message", { chatId, text, replyToId });
+    socket.emit("send-message", { chatId, text, replyToId, type, mediaUrl });
 
     Sentry.logger.info("Message sent", { chatId, messageLength: text.length });
 

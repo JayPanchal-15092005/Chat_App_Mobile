@@ -10,9 +10,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { launchImageLibrary } from "react-native-image-picker";
+import AudioRecorderPlayer from "react-native-audio-recorder-player";
+import { useAuth } from "@clerk/clerk-expo";
+import { uploadToImageKit } from "@/lib/imagekit";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  PermissionsAndroid,
   Platform,
   Pressable,
   ScrollView,
@@ -41,6 +46,11 @@ const ChatDetailScreen = () => {
   const [messageText, setMessageText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  
+  // Audio recorder (stable instance via ref)
+  const audioRecorderRef = useRef<AudioRecorderPlayer>(new AudioRecorderPlayer());
+  const [isRecording, setIsRecording] = useState(false);
+  const { getToken } = useAuth();
 
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -127,6 +137,90 @@ const ChatDetailScreen = () => {
     setIsSending(false);
 
     setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const handlePickImage = async () => {
+    try {
+      const result = await launchImageLibrary({
+        mediaType: "photo",
+        quality: 0.7,
+      });
+      if (!result.didCancel && result.assets?.[0] && currentUser) {
+        setIsSending(true);
+        try {
+          const token = await getToken();
+          if (!token) throw new Error("No token");
+          const url = await uploadToImageKit(result.assets[0].uri!, "image", token);
+          sendMessage(chatId, "📸 Image", {
+            _id: currentUser._id,
+            name: currentUser.name,
+            email: currentUser.email,
+            avatar: currentUser.avatar,
+          }, replyingTo?._id, "image", url);
+          setReplyingTo(null);
+        } catch (err) {
+          console.error("Image upload failed", err);
+        } finally {
+          setIsSending(false);
+        }
+      }
+    } catch (err) {
+      console.error("Image picker error:", err);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      // Request microphone permission on Android
+      if (Platform.OS === "android") {
+        const grants = await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+          PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+        ]);
+        const allGranted = Object.values(grants).every(
+          (g) => g === PermissionsAndroid.RESULTS.GRANTED
+        );
+        if (!allGranted) {
+          console.warn("Recording permissions denied");
+          return;
+        }
+      }
+      await audioRecorderRef.current.startRecorder();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Failed to start recording", err);
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!currentUser) return;
+    try {
+      setIsRecording(false);
+      const uri = await audioRecorderRef.current.stopRecorder();
+      audioRecorderRef.current.removePlayBackListener();
+      if (uri) {
+        setIsSending(true);
+        try {
+          const token = await getToken();
+          if (!token) throw new Error("No token");
+          const url = await uploadToImageKit(uri, "voice", token);
+          sendMessage(chatId, "🎤 Voice Message", {
+            _id: currentUser._id,
+            name: currentUser.name,
+            email: currentUser.email,
+            avatar: currentUser.avatar,
+          }, replyingTo?._id, "voice", url);
+          setReplyingTo(null);
+        } catch (err) {
+          console.error("Voice upload failed", err);
+        } finally {
+          setIsSending(false);
+        }
+      }
+    } catch (err) {
+      console.error("Stop recording failed", err);
+    }
   };
 
   const handleReply = useCallback((msg: Message) => {
@@ -245,41 +339,74 @@ const ChatDetailScreen = () => {
           {/* Input bar */}
           <View style={styles.inputContainer}>
             <View style={styles.inputWrapper}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.addButton,
-                  pressed && styles.pressedState,
-                ]}
-              >
-                <Ionicons name="add" size={22} color={colors.primary.default} />
-              </Pressable>
+              {/* Media Attach Button */}
+              {!isRecording && (
+                <Pressable
+                  onPress={handlePickImage}
+                  style={({ pressed }) => [
+                    styles.addButton,
+                    pressed && styles.pressedState,
+                  ]}
+                >
+                  <Ionicons name="image-outline" size={24} color={colors.primary.default} />
+                </Pressable>
+              )}
 
-              <TextInput
-                placeholder="Type a message"
-                placeholderTextColor={colors.subtleForeground}
-                style={styles.textInput}
-                multiline
-                value={messageText}
-                onChangeText={handleTyping}
-                onSubmitEditing={handleSend}
-                editable={!isSending}
-              />
+              {/* Text Input / Recording Indicator */}
+              {isRecording ? (
+                <View style={[styles.textInput, { justifyContent: "center", marginBottom: 0 }]}>
+                  <Text style={{ color: "red", fontWeight: "bold", paddingVertical: 8 }}>
+                    Recording audio... 🎤
+                  </Text>
+                </View>
+              ) : (
+                <TextInput
+                  placeholder="Type a message"
+                  placeholderTextColor={colors.subtleForeground}
+                  style={styles.textInput}
+                  multiline
+                  value={messageText}
+                  onChangeText={handleTyping}
+                  onSubmitEditing={handleSend}
+                  editable={!isSending}
+                />
+              )}
 
-              <Pressable
-                style={({ pressed }) => [
-                  styles.sendButton,
-                  (!messageText.trim() || isSending) && styles.sendButtonDisabled,
-                  pressed && styles.pressedState,
-                ]}
-                onPress={handleSend}
-                disabled={!messageText.trim() || isSending}
-              >
-                {isSending ? (
-                  <ActivityIndicator size="small" color={colors.surface.dark} />
-                ) : (
-                  <Ionicons name="send" size={18} color={colors.surface.dark} />
-                )}
-              </Pressable>
+              {/* Mic / Send Button */}
+              {messageText.trim().length > 0 ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.sendButton,
+                    isSending && styles.sendButtonDisabled,
+                    pressed && styles.pressedState,
+                  ]}
+                  onPress={handleSend}
+                  disabled={isSending}
+                >
+                  {isSending ? (
+                    <ActivityIndicator size="small" color={colors.surface.dark} />
+                  ) : (
+                    <Ionicons name="send" size={18} color={colors.surface.dark} />
+                  )}
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.sendButton,
+                    isSending && styles.sendButtonDisabled,
+                    pressed && styles.pressedState,
+                    isRecording && { backgroundColor: "red" }
+                  ]}
+                  onPress={isRecording ? stopRecording : startRecording}
+                  disabled={isSending}
+                >
+                  {isSending ? (
+                    <ActivityIndicator size="small" color={colors.surface.dark} />
+                  ) : (
+                    <Ionicons name={isRecording ? "stop" : "mic"} size={18} color={colors.surface.dark} />
+                  )}
+                </Pressable>
+              )}
             </View>
           </View>
         </View>

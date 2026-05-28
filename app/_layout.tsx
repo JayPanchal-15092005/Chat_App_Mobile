@@ -72,7 +72,7 @@ function AppContent() {
 
   return (
     <>
-      <StatusBar style={colors.isDark ? "light" : "dark"} />
+      <StatusBar style={colors.isDark ? "light" : "dark"} backgroundColor={colors.surface.default} />
       <AuthSync />
       <SocketConnection />
       {/* Only mount PushNotificationSetup after sign-in so apiWithAuth works */}

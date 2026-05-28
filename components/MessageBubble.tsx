@@ -3,7 +3,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useSocketStore } from "@/lib/socket";
 import { Message, MessageReaction, MessageSender, ReplyToMessage } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -15,6 +15,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image } from "expo-image";
+import AudioRecorderPlayer from "react-native-audio-recorder-player";
 
 interface MessageBubbleProps {
   message: Message;
@@ -39,6 +41,10 @@ export default function MessageBubble({
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.text);
 
+  // Audio player instance (one per bubble, stable via ref)
+  const audioPlayerRef = useRef(AudioRecorderPlayer);
+  const [isPlaying, setIsPlaying] = useState(false);
+
   const styles = makeStyles(colors);
 
   // ── Derived values ──────────────────────────────────────────────────
@@ -60,6 +66,30 @@ export default function MessageBubble({
 
 
   // ── Handlers ────────────────────────────────────────────────────────
+  const playSound = async () => {
+    if (!message.mediaUrl) return;
+    try {
+      if (isPlaying) {
+        await audioPlayerRef.current.stopPlayer();
+        audioPlayerRef.current.removePlayBackListener();
+        setIsPlaying(false);
+      } else {
+        await audioPlayerRef.current.startPlayer(message.mediaUrl);
+        audioPlayerRef.current.addPlayBackListener((e) => {
+          if (e.currentPosition >= e.duration && e.duration > 0) {
+            audioPlayerRef.current.stopPlayer();
+            audioPlayerRef.current.removePlayBackListener();
+            setIsPlaying(false);
+          }
+        });
+        setIsPlaying(true);
+      }
+    } catch (err) {
+      console.error("Audio playback error", err);
+      setIsPlaying(false);
+    }
+  };
+
   const handleLongPress = () => setShowContextMenu(true);
 
   const handleReact = (emoji: string) => {
@@ -199,15 +229,42 @@ export default function MessageBubble({
             {/* ── Reply quote ── */}
             <ReplyQuote />
 
+            {/* ── Message Media ── */}
+            {message.type === "image" && message.mediaUrl && (
+              <Image
+                source={message.mediaUrl}
+                style={{ width: 220, height: 220, borderRadius: 12, marginBottom: 4 }}
+                contentFit="cover"
+              />
+            )}
+
+            {message.type === "voice" && message.mediaUrl && (
+              <Pressable
+                onPress={playSound}
+                style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, gap: 8, minWidth: 120 }}
+              >
+                <Ionicons
+                  name={isPlaying ? "pause" : "play"}
+                  size={24}
+                  color={isFromMe ? "#000" : colors.primary.default}
+                />
+                <Text style={{ color: isFromMe ? "#000" : colors.foreground, fontSize: 12 }}>
+                  {isPlaying ? "Playing..." : "Voice Message"}
+                </Text>
+              </Pressable>
+            )}
+
             {/* ── Message text ── */}
-            <Text
-              style={[
-                styles.text,
-                isFromMe ? styles.textFromMe : styles.textFromOther,
-              ]}
-            >
-              {message.text}
-            </Text>
+            {message.text && message.text !== "📸 Image" && message.text !== "🎤 Voice Message" && (
+              <Text
+                style={[
+                  styles.text,
+                  isFromMe ? styles.textFromMe : styles.textFromOther,
+                ]}
+              >
+                {message.text}
+              </Text>
+            )}
 
             {/* ── Footer: time + edited + tick ── */}
             <View
@@ -368,6 +425,7 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       paddingTop: 8,
       paddingBottom: 6,
       borderRadius: 18,
+      flexShrink: 1,
     },
     bubbleFromMe: {
       backgroundColor: colors.primary.default,
@@ -416,7 +474,7 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
     },
 
     // ── Message text ──
-    text: { fontSize: 14, lineHeight: 20 },
+    text: { fontSize: 14, lineHeight: 20, flexShrink: 1 },
     textFromMe: { color: "#000" },
     textFromOther: { color: colors.foreground },
 

@@ -28,7 +28,8 @@ export interface Message {
   chat: string;
   sender: MessageSender | string;
   text: string;
-  type: "text";
+  type: "text" | "image" | "voice";
+  mediaUrl?: string | null;
   status: "sent" | "delivered" | "seen";
   replyTo?: ReplyToMessage | null;
   reactions: MessageReaction[];

@@ -60,6 +60,14 @@
           "defaultChannel": "messages",
           "sounds": []
         }
+      ],
+      [
+        "react-native-image-picker",
+        {
+          "cameraPermissionText": "Allow $(PRODUCT_NAME) to access your camera",
+          "photoLibraryAddPermissionText": "Allow $(PRODUCT_NAME) to save photos",
+          "photoLibraryPermissionText": "Allow $(PRODUCT_NAME) to access your photo library"
+        }
       ]
     ],
     "experiments": {
