@@ -2,8 +2,8 @@ import AuthSync from "@/components/AuthSync";
 import SocketConnection from "@/components/SocketConnection";
 import { ThemeProvider } from "@/constants/Theme";
 import { useNotifications } from "@/hooks/useNotifications";
-import { useAuth } from "@clerk/clerk-expo";
-import { ClerkProvider } from "@clerk/clerk-expo";
+import { useTheme } from "@/hooks/useTheme";
+import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
@@ -68,9 +68,11 @@ function PushNotificationSetup() {
 // ─────────────────────────────────────────────
 function AppContent() {
   const { isSignedIn } = useAuth();
+  const { colors } = useTheme();
 
   return (
     <>
+      <StatusBar style={colors.isDark ? "light" : "dark"} />
       <AuthSync />
       <SocketConnection />
       {/* Only mount PushNotificationSetup after sign-in so apiWithAuth works */}
@@ -114,7 +116,6 @@ export default Sentry.wrap(function RootLayout() {
     >
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
-          <StatusBar style="auto" />
           <AppContent />
         </ThemeProvider>
       </QueryClientProvider>

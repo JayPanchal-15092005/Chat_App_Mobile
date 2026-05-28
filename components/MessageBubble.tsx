@@ -6,7 +6,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -50,9 +52,12 @@ export default function MessageBubble({
     {}
   );
 
+  // Edit button only shows within 15 minutes of sending (like Telegram)
   const canEdit =
     isFromMe &&
+    !message._id.startsWith("temp-") &&
     Date.now() - new Date(message.createdAt).getTime() < 15 * 60 * 1000;
+
 
   // ── Handlers ────────────────────────────────────────────────────────
   const handleLongPress = () => setShowContextMenu(true);
@@ -142,10 +147,10 @@ export default function MessageBubble({
       >
         <View style={styles.replyAccentBar} />
         <View style={styles.replyContent}>
-          <Text style={styles.replyName} numberOfLines={1}>
+          <Text style={styles.replyName}>
             {senderName}
           </Text>
-          <Text style={styles.replyText} numberOfLines={2}>
+          <Text style={styles.replyText}>
             {rt.text}
           </Text>
         </View>
@@ -236,14 +241,27 @@ export default function MessageBubble({
         <ReactionBubbles />
       </View>
 
-      {/* ── Edit Modal (full-screen input, not inline) ──────────────── */}
+      {/* ── Edit Modal ──────────────────────────────────────────────── */}
       <Modal
         visible={isEditing}
         transparent
         animationType="slide"
+        statusBarTranslucent
         onRequestClose={() => setIsEditing(false)}
       >
-        <Pressable style={styles.editOverlay} onPress={() => setIsEditing(false)}>
+        {/* KeyboardAvoidingView pushes the sheet up when keyboard opens */}
+        <KeyboardAvoidingView
+          style={styles.editKAV}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
+          keyboardVerticalOffset={0}
+        >
+          {/* Backdrop — tap to dismiss */}
+          <Pressable
+            style={styles.editBackdrop}
+            onPress={() => setIsEditing(false)}
+          />
+
+          {/* Sheet */}
           <View style={styles.editModal}>
             <Text style={styles.editModalTitle}>Edit Message</Text>
             <TextInput
@@ -274,7 +292,7 @@ export default function MessageBubble({
               </Pressable>
             </View>
           </View>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── Context Menu Modal ─────────────────────────────────────── */}
@@ -345,6 +363,7 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
 
     bubble: {
       maxWidth: "80%",
+      minWidth: 160,
       paddingHorizontal: 12,
       paddingTop: 8,
       paddingBottom: 6,
@@ -365,7 +384,6 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
     replyQuote: {
       flexDirection: "row",
       borderRadius: 8,
-      overflow: "hidden",
       marginBottom: 6,
     },
     replyQuoteFromMe: {
@@ -376,10 +394,13 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
     },
     replyAccentBar: {
       width: 3,
+      borderTopLeftRadius: 8,
+      borderBottomLeftRadius: 8,
       backgroundColor: colors.primary.default,
     },
     replyContent: {
       flex: 1,
+      flexShrink: 1,
       paddingHorizontal: 8,
       paddingVertical: 5,
     },
@@ -444,10 +465,13 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
     reactionCount: { fontSize: 11, color: colors.mutedForeground, fontWeight: "600" },
 
     // ── Edit Modal ──
-    editOverlay: {
+    editKAV: {
       flex: 1,
       backgroundColor: "rgba(0,0,0,0.6)",
       justifyContent: "flex-end",
+    },
+    editBackdrop: {
+      flex: 1, // takes up all space ABOVE the sheet → tapping it dismisses
     },
     editModal: {
       backgroundColor: colors.surface.card,
