@@ -42,7 +42,24 @@ export const LightColors = {
   isDark: false,
 } as const;
 
-export type ColorPalette = typeof DarkColors;
+export type ColorPalette = {
+  readonly primary: {
+    readonly default: string;
+    readonly light: string;
+    readonly dark: string;
+    readonly soft: string;
+  };
+  readonly surface: {
+    readonly default: string;
+    readonly light: string;
+    readonly dark: string;
+    readonly card: string;
+  };
+  readonly foreground: string;
+  readonly mutedForeground: string;
+  readonly subtleForeground: string;
+  readonly isDark: boolean;
+};
 
 // ─────────────────────────────────────────────
 // Theme Context

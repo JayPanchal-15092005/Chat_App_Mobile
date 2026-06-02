@@ -10,14 +10,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { launchImageLibrary } from "react-native-image-picker";
-import AudioRecorderPlayer from "react-native-audio-recorder-player";
+import * as ImagePicker from "expo-image-picker";
+import { useAudioRecorder, requestRecordingPermissionsAsync, RecordingPresets } from "expo-audio";
 import { useAuth } from "@clerk/clerk-expo";
 import { uploadToImageKit } from "@/lib/imagekit";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  PermissionsAndroid,
   Platform,
   Pressable,
   ScrollView,
@@ -47,8 +46,8 @@ const ChatDetailScreen = () => {
   const [isSending, setIsSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   
-  // Audio recorder (stable instance via ref)
-  const audioRecorderRef = useRef<AudioRecorderPlayer>(new AudioRecorderPlayer());
+  // Audio recorder via expo-audio (SDK 54)
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [isRecording, setIsRecording] = useState(false);
   const { getToken } = useAuth();
 
@@ -141,16 +140,22 @@ const ChatDetailScreen = () => {
 
   const handlePickImage = async () => {
     try {
-      const result = await launchImageLibrary({
-        mediaType: "photo",
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        console.warn("Media library permission denied");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"] as any,
+        allowsEditing: true,
         quality: 0.7,
       });
-      if (!result.didCancel && result.assets?.[0] && currentUser) {
+      if (!result.canceled && result.assets?.[0] && currentUser) {
         setIsSending(true);
         try {
           const token = await getToken();
           if (!token) throw new Error("No token");
-          const url = await uploadToImageKit(result.assets[0].uri!, "image", token);
+          const url = await uploadToImageKit(result.assets[0].uri, "image", token);
           sendMessage(chatId, "📸 Image", {
             _id: currentUser._id,
             name: currentUser.name,
@@ -171,22 +176,13 @@ const ChatDetailScreen = () => {
 
   const startRecording = async () => {
     try {
-      // Request microphone permission on Android
-      if (Platform.OS === "android") {
-        const grants = await PermissionsAndroid.requestMultiple([
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-          PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-        ]);
-        const allGranted = Object.values(grants).every(
-          (g) => g === PermissionsAndroid.RESULTS.GRANTED
-        );
-        if (!allGranted) {
-          console.warn("Recording permissions denied");
-          return;
-        }
+      const status = await requestRecordingPermissionsAsync();
+      if (!status.granted) {
+        console.warn("Microphone permission denied");
+        return;
       }
-      await audioRecorderRef.current.startRecorder();
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
       setIsRecording(true);
     } catch (err) {
       console.error("Failed to start recording", err);
@@ -197,8 +193,8 @@ const ChatDetailScreen = () => {
     if (!currentUser) return;
     try {
       setIsRecording(false);
-      const uri = await audioRecorderRef.current.stopRecorder();
-      audioRecorderRef.current.removePlayBackListener();
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
       if (uri) {
         setIsSending(true);
         try {

@@ -1,9 +1,15 @@
 import ReactionPicker from "@/components/ReactionPicker";
 import { useTheme } from "@/hooks/useTheme";
 import { useSocketStore } from "@/lib/socket";
-import { Message, MessageReaction, MessageSender, ReplyToMessage } from "@/types";
+import {
+  Message,
+  MessageSender,
+  ReplyToMessage
+} from "@/types";
 import { Ionicons } from "@expo/vector-icons";
-import { useState, useRef } from "react";
+import { Image } from "expo-image";
+import { useState } from "react";
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -15,8 +21,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Image } from "expo-image";
-import AudioRecorderPlayer from "react-native-audio-recorder-player";
 
 interface MessageBubbleProps {
   message: Message;
@@ -41,22 +45,22 @@ export default function MessageBubble({
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.text);
 
-  // Audio player instance (one per bubble, stable via ref)
-  const audioPlayerRef = useRef(AudioRecorderPlayer);
-  const [isPlaying, setIsPlaying] = useState(false);
+  // Audio player via expo-audio (works in Expo Go, no native module needed)
+  const audioPlayer = useAudioPlayer(message.type === "voice" && message.mediaUrl ? { uri: message.mediaUrl } : null);
+  const audioStatus = useAudioPlayerStatus(audioPlayer);
+  const isPlaying = audioStatus.playing;
 
   const styles = makeStyles(colors);
 
   // ── Derived values ──────────────────────────────────────────────────
   const myReaction = message.reactions?.find((r) => r.userId === currentUserId);
 
-  const groupedReactions = (message.reactions ?? []).reduce<Record<string, number>>(
-    (acc, r) => {
-      acc[r.emoji] = (acc[r.emoji] ?? 0) + 1;
-      return acc;
-    },
-    {}
-  );
+  const groupedReactions = (message.reactions ?? []).reduce<
+    Record<string, number>
+  >((acc, r) => {
+    acc[r.emoji] = (acc[r.emoji] ?? 0) + 1;
+    return acc;
+  }, {});
 
   // Edit button only shows within 15 minutes of sending (like Telegram)
   const canEdit =
@@ -64,29 +68,21 @@ export default function MessageBubble({
     !message._id.startsWith("temp-") &&
     Date.now() - new Date(message.createdAt).getTime() < 15 * 60 * 1000;
 
-
   // ── Handlers ────────────────────────────────────────────────────────
   const playSound = async () => {
     if (!message.mediaUrl) return;
     try {
       if (isPlaying) {
-        await audioPlayerRef.current.stopPlayer();
-        audioPlayerRef.current.removePlayBackListener();
-        setIsPlaying(false);
+        audioPlayer.pause();
       } else {
-        await audioPlayerRef.current.startPlayer(message.mediaUrl);
-        audioPlayerRef.current.addPlayBackListener((e) => {
-          if (e.currentPosition >= e.duration && e.duration > 0) {
-            audioPlayerRef.current.stopPlayer();
-            audioPlayerRef.current.removePlayBackListener();
-            setIsPlaying(false);
-          }
-        });
-        setIsPlaying(true);
+        // If finished, seek back to start before replaying
+        if (audioStatus.didJustFinish) {
+          audioPlayer.seekTo(0);
+        }
+        audioPlayer.play();
       }
     } catch (err) {
       console.error("Audio playback error", err);
-      setIsPlaying(false);
     }
   };
 
@@ -114,10 +110,18 @@ export default function MessageBubble({
 
   const handleDelete = () => {
     setShowContextMenu(false);
-    Alert.alert("Delete Message", "Are you sure you want to delete this message?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteMessage(message._id, chatId) },
-    ]);
+    Alert.alert(
+      "Delete Message",
+      "Are you sure you want to delete this message?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteMessage(message._id, chatId),
+        },
+      ],
+    );
   };
 
   const handleReply = () => {
@@ -177,12 +181,8 @@ export default function MessageBubble({
       >
         <View style={styles.replyAccentBar} />
         <View style={styles.replyContent}>
-          <Text style={styles.replyName}>
-            {senderName}
-          </Text>
-          <Text style={styles.replyText}>
-            {rt.text}
-          </Text>
+          <Text style={styles.replyName}>{senderName}</Text>
+          <Text style={styles.replyText}>{rt.text}</Text>
         </View>
       </View>
     );
@@ -217,7 +217,12 @@ export default function MessageBubble({
 
   return (
     <>
-      <View style={[styles.wrapper, isFromMe ? styles.alignRight : styles.alignLeft]}>
+      <View
+        style={[
+          styles.wrapper,
+          isFromMe ? styles.alignRight : styles.alignLeft,
+        ]}
+      >
         {/* Bubble */}
         <Pressable onLongPress={handleLongPress} delayLongPress={300}>
           <View
@@ -233,7 +238,12 @@ export default function MessageBubble({
             {message.type === "image" && message.mediaUrl && (
               <Image
                 source={message.mediaUrl}
-                style={{ width: 220, height: 220, borderRadius: 12, marginBottom: 4 }}
+                style={{
+                  width: 220,
+                  height: 220,
+                  borderRadius: 12,
+                  marginBottom: 4,
+                }}
                 contentFit="cover"
               />
             )}
@@ -241,30 +251,43 @@ export default function MessageBubble({
             {message.type === "voice" && message.mediaUrl && (
               <Pressable
                 onPress={playSound}
-                style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, gap: 8, minWidth: 120 }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingVertical: 8,
+                  gap: 8,
+                  minWidth: 120,
+                }}
               >
                 <Ionicons
                   name={isPlaying ? "pause" : "play"}
                   size={24}
                   color={isFromMe ? "#000" : colors.primary.default}
                 />
-                <Text style={{ color: isFromMe ? "#000" : colors.foreground, fontSize: 12 }}>
+                <Text
+                  style={{
+                    color: isFromMe ? "#000" : colors.foreground,
+                    fontSize: 12,
+                  }}
+                >
                   {isPlaying ? "Playing..." : "Voice Message"}
                 </Text>
               </Pressable>
             )}
 
             {/* ── Message text ── */}
-            {message.text && message.text !== "📸 Image" && message.text !== "🎤 Voice Message" && (
-              <Text
-                style={[
-                  styles.text,
-                  isFromMe ? styles.textFromMe : styles.textFromOther,
-                ]}
-              >
-                {message.text}
-              </Text>
-            )}
+            {message.text &&
+              message.text !== "📸 Image" &&
+              message.text !== "🎤 Voice Message" && (
+                <Text
+                  style={[
+                    styles.text,
+                    isFromMe ? styles.textFromMe : styles.textFromOther,
+                  ]}
+                >
+                  {message.text}
+                </Text>
+              )}
 
             {/* ── Footer: time + edited + tick ── */}
             <View
@@ -283,7 +306,12 @@ export default function MessageBubble({
                   Edited
                 </Text>
               )}
-              <Text style={[styles.time, isFromMe ? styles.timeMe : styles.timeOther]}>
+              <Text
+                style={[
+                  styles.time,
+                  isFromMe ? styles.timeMe : styles.timeOther,
+                ]}
+              >
                 {new Date(message.createdAt).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -368,7 +396,10 @@ export default function MessageBubble({
         >
           <View style={styles.contextMenuContainer}>
             {showReactionPicker ? (
-              <ReactionPicker onSelect={handleReact} selectedEmoji={myReaction?.emoji} />
+              <ReactionPicker
+                onSelect={handleReact}
+                selectedEmoji={myReaction?.emoji}
+              />
             ) : (
               <>
                 <Pressable
@@ -380,22 +411,38 @@ export default function MessageBubble({
                 </Pressable>
 
                 <Pressable style={styles.contextMenuItem} onPress={handleReply}>
-                  <Ionicons name="arrow-undo-outline" size={20} color={colors.primary.default} />
+                  <Ionicons
+                    name="arrow-undo-outline"
+                    size={20}
+                    color={colors.primary.default}
+                  />
                   <Text style={styles.contextMenuText}>Reply</Text>
                 </Pressable>
 
                 {canEdit && (
-                  <Pressable style={styles.contextMenuItem} onPress={handleEdit}>
-                    <Ionicons name="pencil-outline" size={20} color={colors.primary.default} />
+                  <Pressable
+                    style={styles.contextMenuItem}
+                    onPress={handleEdit}
+                  >
+                    <Ionicons
+                      name="pencil-outline"
+                      size={20}
+                      color={colors.primary.default}
+                    />
                     <Text style={styles.contextMenuText}>Edit</Text>
                   </Pressable>
                 )}
 
                 <View style={styles.contextDivider} />
 
-                <Pressable style={styles.contextMenuItem} onPress={handleDelete}>
+                <Pressable
+                  style={styles.contextMenuItem}
+                  onPress={handleDelete}
+                >
                   <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                  <Text style={[styles.contextMenuText, { color: "#EF4444" }]}>Delete</Text>
+                  <Text style={[styles.contextMenuText, { color: "#EF4444" }]}>
+                    Delete
+                  </Text>
                 </Pressable>
               </>
             )}
@@ -520,7 +567,11 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       backgroundColor: `${colors.primary.default}25`,
     },
     reactionEmoji: { fontSize: 14 },
-    reactionCount: { fontSize: 11, color: colors.mutedForeground, fontWeight: "600" },
+    reactionCount: {
+      fontSize: 11,
+      color: colors.mutedForeground,
+      fontWeight: "600",
+    },
 
     // ── Edit Modal ──
     editKAV: {

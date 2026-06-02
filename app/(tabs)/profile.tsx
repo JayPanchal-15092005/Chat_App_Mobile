@@ -11,6 +11,19 @@ import {
   View,
 } from "react-native";
 
+interface MenuItem {
+  icon: string;
+  label: string;
+  color: string;
+  value?: string;
+  isDarkModeToggle?: boolean;
+}
+
+interface MenuSection {
+  title: string;
+  items: MenuItem[];
+}
+
 const ProfileTab = () => {
   const { signOut } = useAuth();
   const { user } = useUser();
@@ -18,7 +31,7 @@ const ProfileTab = () => {
 
   const styles = makeStyles(colors);
 
-  const MENU_SECTIONS = [
+  const MENU_SECTIONS: MenuSection[] = [
     {
       title: "Account",
       items: [
