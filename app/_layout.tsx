@@ -3,6 +3,8 @@ import SocketConnection from "@/components/SocketConnection";
 import { ThemeProvider } from "@/constants/Theme";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useTheme } from "@/hooks/useTheme";
+import IncomingCallModal from "@/components/IncomingCallModal";
+import ActiveCallScreen from "@/components/ActiveCallScreen";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -77,6 +79,8 @@ function AppContent() {
       <SocketConnection />
       {/* Only mount PushNotificationSetup after sign-in so apiWithAuth works */}
       {isSignedIn && <PushNotificationSetup />}
+      <IncomingCallModal />
+      <ActiveCallScreen />
       <Stack
         screenOptions={{
           headerShown: false,

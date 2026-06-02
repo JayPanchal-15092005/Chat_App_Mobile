@@ -4,6 +4,7 @@ import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
+import { useCallStore } from "@/lib/callStore";
 import { useEffect, useRef } from "react";
 import { AppState, Platform } from "react-native";
 
@@ -50,7 +51,10 @@ export function useNotifications() {
         const data = response.notification.request.content.data as any;
         console.log("[Notifications] Tapped notification data:", data);
 
-        if (data?.chatId && data?.participantId && data?.name) {
+        if (data?.type === "incoming-call") {
+          const { callerId, callerName, callerAvatar, callType } = data;
+          useCallStore.getState().setIncomingCallFromPush({ callerId, callerName, callerAvatar, callType });
+        } else if (data?.chatId && data?.participantId && data?.name) {
           router.push({
             pathname: "/chat/[id]",
             params: {

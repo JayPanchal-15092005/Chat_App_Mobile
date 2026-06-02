@@ -2,6 +2,7 @@ import { useSocketStore } from "@/lib/socket";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { useCallStore } from "@/lib/callStore";
 
 const SocketConnection = () => {
   const { getToken, isSignedIn } = useAuth();
@@ -12,7 +13,10 @@ const SocketConnection = () => {
   useEffect(() => {
     if (isSignedIn) {
       getToken().then((token) => {
-        if (token) connect(token, queryClient);
+        if (token) {
+          connect(token, queryClient);
+          useCallStore.getState().initCallListeners();
+        }
       });
     } else disconnect();
 

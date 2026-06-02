@@ -5,6 +5,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useMessages } from "@/hooks/useMessages";
 import { useSocketStore } from "@/lib/socket";
+import { useCallStore } from "@/lib/callStore";
 import { Message, MessageSender, ReplyToMessage } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -24,6 +25,7 @@ import {
   Text,
   TextInput,
   View,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -68,6 +70,8 @@ const ChatDetailScreen = () => {
     markDelivered,
     markSeen,
   } = useSocketStore();
+
+  const startCall = useCallStore((state) => state.startCall);
 
   const isOnline = participantId ? onlineUsers.has(participantId) : false;
   const isTyping = typingUsers.get(chatId) === participantId;
@@ -255,6 +259,7 @@ const ChatDetailScreen = () => {
 
         <View style={styles.headerActions}>
           <Pressable
+            onPress={() => startCall(participantId, name, avatar || "")}
             style={({ pressed }) => [
               styles.actionButton,
               pressed && styles.pressedState,
@@ -263,6 +268,7 @@ const ChatDetailScreen = () => {
             <Ionicons name="call-outline" size={20} color={colors.mutedForeground} />
           </Pressable>
           <Pressable
+            onPress={() => Alert.alert("Coming Soon", "Video calls will be available in the next update!")}
             style={({ pressed }) => [
               styles.actionButton,
               pressed && styles.pressedState,
