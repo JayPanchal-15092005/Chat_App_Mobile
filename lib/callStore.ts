@@ -1,3 +1,4 @@
+import axios from "axios";
 import InCallManager from "react-native-incall-manager";
 import {
   MediaStream,
@@ -7,6 +8,7 @@ import {
   mediaDevices,
 } from "react-native-webrtc";
 import { create } from "zustand";
+import { API_URL } from "../constants/Config";
 import { useSocketStore } from "./socket";
 
 // Define RTCConfiguration locally since react-native-webrtc doesn't export it
@@ -59,20 +61,40 @@ export interface CallState {
   _cleanup: () => void;
 }
 
-const fetchIceServers = async (): Promise<RTCConfig> => {
+// const fetchIceServers = async (): Promise<RTCConfig> => {
+//   try {
+//     const apiUrl =
+//       process.env.EXPO_PUBLIC_API_URL ||
+//       "https://chat-app-backend-zj3i.onrender.com//api/turn/credentials";
+//     const response = await fetch(`${apiUrl}/api/turn/credentials`);
+//     const iceServers = await response.json();
+//     return { iceServers };
+//   } catch (err) {
+//     console.log("Failed to fetch TURN credentials, falling back to STUN only");
+//     return {
+//       iceServers: [
+//         { urls: "stun:stun.l.google.com:19302" },
+//         { urls: "stun:stun1.l.google.com:19302" },
+//       ],
+//     };
+//   }
+// };
+
+const fetchIceServers = async () => {
   try {
-    const apiUrl =
-      process.env.EXPO_PUBLIC_API_URL ||
-      "https://chat-app-backend-zj3i.onrender.com";
-    const response = await fetch(`${apiUrl}/api/turn/credentials`);
-    const iceServers = await response.json();
-    return { iceServers };
-  } catch (err) {
-    console.log("Failed to fetch TURN credentials, falling back to STUN only");
+    const response = await axios.get(`${API_URL}/api/turn/credentials`);
+
+    return {
+      iceServers: response.data,
+    };
+  } catch (error) {
+    console.error("Failed to fetch ICE servers:", error);
+
     return {
       iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
+        {
+          urls: "stun:stun.l.google.com:19302",
+        },
       ],
     };
   }
@@ -132,21 +154,42 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   startCall: async (targetUserId, name, avatar) => {
+    console.log("STEP 1 - startCall called");
+    console.log("targetUserId =", targetUserId);
+
     const socket = useSocketStore.getState().socket;
+
+    console.log("STEP 2 - socket exists =", !!socket);
+    console.log("STEP 3 - socket connected =", socket?.connected);
+    // const socket = useSocketStore.getState().socket;
     if (!socket) return;
 
     try {
       // Request audio stream
+      console.log("STEP 4 - requesting microphone");
       const stream = await mediaDevices.getUserMedia({
         audio: true,
         video: false,
       });
+
+      console.log("STEP 5 - microphone granted");
       const iceConfig = await fetchIceServers();
 
-      // Create peer connection with ICE servers
       const pc = new RTCPeerConnection({
         iceServers: iceConfig.iceServers,
       } as any);
+
+      console.log("ICE CONFIG =", JSON.stringify(iceConfig, null, 2));
+
+      console.log("STEP 6 - creating peer connection");
+
+      // const pc = new RTCPeerConnection({
+      //   iceServers: [
+      //     {
+      //       urls: "stun:stun.l.google.com:19302",
+      //     },
+      //   ],
+      // } as any);
 
       // Add audio tracks to peer connection
       stream.getTracks().forEach((track) => {
@@ -187,11 +230,14 @@ export const useCallStore = create<CallState>((set, get) => ({
       });
 
       // Create and send offer
+      console.log("STEP 7 - creating offer");
       const offer = await pc.createOffer();
+      console.log("STEP 8 - offer created");
       await pc.setLocalDescription(offer);
 
       const currentUserId = socket.id;
 
+      console.log("STEP 9 - sending call offer");
       socket.emit("call-offer", {
         targetUserId,
         callerId: currentUserId,
@@ -230,6 +276,7 @@ export const useCallStore = create<CallState>((set, get) => ({
 
     try {
       // Request audio stream
+      console.log("STEP 4 - requesting microphone");
       const stream = await mediaDevices.getUserMedia({
         audio: true,
         video: false,

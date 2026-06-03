@@ -1,22 +1,27 @@
 import EmptyUI from "@/components/EmptyUI";
 import MessageBubble from "@/components/MessageBubble";
 import ReplyPreview from "@/components/ReplyPreview";
-import { useTheme } from "@/hooks/useTheme";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useMessages } from "@/hooks/useMessages";
-import { useSocketStore } from "@/lib/socket";
+import { useTheme } from "@/hooks/useTheme";
 import { useCallStore } from "@/lib/callStore";
+import { uploadToImageKit } from "@/lib/imagekit";
+import { useSocketStore } from "@/lib/socket";
 import { Message, MessageSender, ReplyToMessage } from "@/types";
+import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  useAudioRecorder,
+} from "expo-audio";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as ImagePicker from "expo-image-picker";
-import { useAudioRecorder, requestRecordingPermissionsAsync, RecordingPresets } from "expo-audio";
-import { useAuth } from "@clerk/clerk-expo";
-import { uploadToImageKit } from "@/lib/imagekit";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -25,7 +30,6 @@ import {
   Text,
   TextInput,
   View,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -47,7 +51,7 @@ const ChatDetailScreen = () => {
   const [messageText, setMessageText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  
+
   // Audio recorder via expo-audio (SDK 54)
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [isRecording, setIsRecording] = useState(false);
@@ -108,7 +112,10 @@ const ChatDetailScreen = () => {
       if (text.length > 0) {
         sendTyping(chatId, true);
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => sendTyping(chatId, false), 2000);
+        typingTimeoutRef.current = setTimeout(
+          () => sendTyping(chatId, false),
+          2000,
+        );
       } else {
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         sendTyping(chatId, false);
@@ -118,7 +125,8 @@ const ChatDetailScreen = () => {
   );
 
   const handleSend = () => {
-    if (!messageText.trim() || isSending || !isConnected || !currentUser) return;
+    if (!messageText.trim() || isSending || !isConnected || !currentUser)
+      return;
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     sendTyping(chatId, false);
@@ -133,18 +141,22 @@ const ChatDetailScreen = () => {
         email: currentUser.email,
         avatar: currentUser.avatar,
       },
-      replyingTo?._id
+      replyingTo?._id,
     );
     setMessageText("");
     setReplyingTo(null);
     setIsSending(false);
 
-    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    setTimeout(
+      () => scrollViewRef.current?.scrollToEnd({ animated: true }),
+      100,
+    );
   };
 
   const handlePickImage = async () => {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
         console.warn("Media library permission denied");
         return;
@@ -159,13 +171,24 @@ const ChatDetailScreen = () => {
         try {
           const token = await getToken();
           if (!token) throw new Error("No token");
-          const url = await uploadToImageKit(result.assets[0].uri, "image", token);
-          sendMessage(chatId, "📸 Image", {
-            _id: currentUser._id,
-            name: currentUser.name,
-            email: currentUser.email,
-            avatar: currentUser.avatar,
-          }, replyingTo?._id, "image", url);
+          const url = await uploadToImageKit(
+            result.assets[0].uri,
+            "image",
+            token,
+          );
+          sendMessage(
+            chatId,
+            "📸 Image",
+            {
+              _id: currentUser._id,
+              name: currentUser.name,
+              email: currentUser.email,
+              avatar: currentUser.avatar,
+            },
+            replyingTo?._id,
+            "image",
+            url,
+          );
           setReplyingTo(null);
         } catch (err) {
           console.error("Image upload failed", err);
@@ -205,12 +228,19 @@ const ChatDetailScreen = () => {
           const token = await getToken();
           if (!token) throw new Error("No token");
           const url = await uploadToImageKit(uri, "voice", token);
-          sendMessage(chatId, "🎤 Voice Message", {
-            _id: currentUser._id,
-            name: currentUser.name,
-            email: currentUser.email,
-            avatar: currentUser.avatar,
-          }, replyingTo?._id, "voice", url);
+          sendMessage(
+            chatId,
+            "🎤 Voice Message",
+            {
+              _id: currentUser._id,
+              name: currentUser.name,
+              email: currentUser.email,
+              avatar: currentUser.avatar,
+            },
+            replyingTo?._id,
+            "voice",
+            url,
+          );
           setReplyingTo(null);
         } catch (err) {
           console.error("Voice upload failed", err);
@@ -237,7 +267,11 @@ const ChatDetailScreen = () => {
           onPress={() => router.back()}
           style={({ pressed }) => pressed && styles.pressedState}
         >
-          <Ionicons name="arrow-back" size={24} color={colors.primary.default} />
+          <Ionicons
+            name="arrow-back"
+            size={24}
+            color={colors.primary.default}
+          />
         </Pressable>
 
         <View style={styles.headerInfo}>
@@ -259,22 +293,43 @@ const ChatDetailScreen = () => {
 
         <View style={styles.headerActions}>
           <Pressable
-            onPress={() => startCall(participantId, name, avatar || "")}
+            // onPress={() => startCall(participantId, name, avatar || "")}
+            onPress={() => {
+              console.log("CALL BUTTON CLICKED");
+              console.log("participantId =", participantId);
+              console.log("name =", name);
+              console.log("avatar =", avatar);
+
+              startCall(participantId, name, avatar || "");
+            }}
             style={({ pressed }) => [
               styles.actionButton,
               pressed && styles.pressedState,
             ]}
           >
-            <Ionicons name="call-outline" size={20} color={colors.mutedForeground} />
+            <Ionicons
+              name="call-outline"
+              size={20}
+              color={colors.mutedForeground}
+            />
           </Pressable>
           <Pressable
-            onPress={() => Alert.alert("Coming Soon", "Video calls will be available in the next update!")}
+            onPress={() =>
+              Alert.alert(
+                "Coming Soon",
+                "Video calls will be available in the next update!",
+              )
+            }
             style={({ pressed }) => [
               styles.actionButton,
               pressed && styles.pressedState,
             ]}
           >
-            <Ionicons name="videocam-outline" size={20} color={colors.mutedForeground} />
+            <Ionicons
+              name="videocam-outline"
+              size={20}
+              color={colors.mutedForeground}
+            />
           </Pressable>
         </View>
       </View>
@@ -308,7 +363,9 @@ const ChatDetailScreen = () => {
             >
               {messages.map((message) => {
                 const senderId = (message.sender as MessageSender)._id;
-                const isFromMe = currentUser ? senderId === currentUser._id : false;
+                const isFromMe = currentUser
+                  ? senderId === currentUser._id
+                  : false;
 
                 return (
                   <MessageBubble
@@ -350,14 +407,29 @@ const ChatDetailScreen = () => {
                     pressed && styles.pressedState,
                   ]}
                 >
-                  <Ionicons name="image-outline" size={24} color={colors.primary.default} />
+                  <Ionicons
+                    name="image-outline"
+                    size={24}
+                    color={colors.primary.default}
+                  />
                 </Pressable>
               )}
 
               {/* Text Input / Recording Indicator */}
               {isRecording ? (
-                <View style={[styles.textInput, { justifyContent: "center", marginBottom: 0 }]}>
-                  <Text style={{ color: "red", fontWeight: "bold", paddingVertical: 8 }}>
+                <View
+                  style={[
+                    styles.textInput,
+                    { justifyContent: "center", marginBottom: 0 },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: "red",
+                      fontWeight: "bold",
+                      paddingVertical: 8,
+                    }}
+                  >
                     Recording audio... 🎤
                   </Text>
                 </View>
@@ -386,9 +458,16 @@ const ChatDetailScreen = () => {
                   disabled={isSending}
                 >
                   {isSending ? (
-                    <ActivityIndicator size="small" color={colors.surface.dark} />
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.surface.dark}
+                    />
                   ) : (
-                    <Ionicons name="send" size={18} color={colors.surface.dark} />
+                    <Ionicons
+                      name="send"
+                      size={18}
+                      color={colors.surface.dark}
+                    />
                   )}
                 </Pressable>
               ) : (
@@ -397,15 +476,22 @@ const ChatDetailScreen = () => {
                     styles.sendButton,
                     isSending && styles.sendButtonDisabled,
                     pressed && styles.pressedState,
-                    isRecording && { backgroundColor: "red" }
+                    isRecording && { backgroundColor: "red" },
                   ]}
                   onPress={isRecording ? stopRecording : startRecording}
                   disabled={isSending}
                 >
                   {isSending ? (
-                    <ActivityIndicator size="small" color={colors.surface.dark} />
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.surface.dark}
+                    />
                   ) : (
-                    <Ionicons name={isRecording ? "stop" : "mic"} size={18} color={colors.surface.dark} />
+                    <Ionicons
+                      name={isRecording ? "stop" : "mic"}
+                      size={18}
+                      color={colors.surface.dark}
+                    />
                   )}
                 </Pressable>
               )}
@@ -455,7 +541,11 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       justifyContent: "center",
     },
     mainContainer: { flex: 1, backgroundColor: colors.surface.default },
-    centerContainer: { flex: 1, alignItems: "center", justifyContent: "center" },
+    centerContainer: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     scrollContent: {
       paddingHorizontal: 16,
       paddingVertical: 12,
