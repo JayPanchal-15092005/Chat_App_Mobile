@@ -15,12 +15,19 @@ const SocketConnection = () => {
       getToken().then((token) => {
         if (token) {
           connect(token, queryClient);
-          useCallStore.getState().initCallListeners();
+          // Only init listeners once to prevent duplicates
+          if (!useCallStore.getState()._listenersInitialized) {
+            useCallStore.getState().initCallListeners();
+          }
         }
       });
-    } else disconnect();
+    } else {
+      useCallStore.getState()._cleanup();
+      disconnect();
+    }
 
     return () => {
+      useCallStore.getState()._cleanup();
       disconnect();
     };
   }, [isSignedIn, connect, disconnect, getToken, queryClient]);

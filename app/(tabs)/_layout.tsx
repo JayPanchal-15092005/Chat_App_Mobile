@@ -47,6 +47,19 @@ const TabsLayout = () => {
         }}
       />
       <Tabs.Screen
+        name="calls"
+        options={{
+          title: "Calls",
+          tabBarIcon: ({ color, focused, size }) => (
+            <Ionicons
+              name={focused ? "call" : "call-outline"}
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",

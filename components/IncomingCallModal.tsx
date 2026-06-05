@@ -1,8 +1,9 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, Dimensions } from "react-native";
+import { View, Text, StyleSheet, Pressable, Dimensions, Vibration } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallStore } from "@/lib/callStore";
+import InCallManager from "react-native-incall-manager";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -22,20 +23,46 @@ const IncomingCallModal = () => {
 
   useEffect(() => {
     if (callStatus === "incoming") {
+      // Start pulse animation
       pulse.value = withRepeat(
         withTiming(1.2, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
         -1,
         true
       );
+
+      // Start vibration pattern (500ms vibrate, 1000ms pause, repeat)
+      Vibration.vibrate([500, 1000], true);
+
+      // Start ringtone
+      InCallManager.startRingtone("_DEFAULT_");
     } else {
       pulse.value = 1;
     }
+
+    return () => {
+      if (callStatus === "incoming") {
+        Vibration.cancel();
+        InCallManager.stopRingtone();
+      }
+    };
   }, [callStatus]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulse.value }],
     opacity: 2 - pulse.value,
   }));
+
+  const handleAccept = () => {
+    Vibration.cancel();
+    InCallManager.stopRingtone();
+    acceptCall();
+  };
+
+  const handleReject = () => {
+    Vibration.cancel();
+    InCallManager.stopRingtone();
+    rejectCall();
+  };
 
   if (callStatus !== "incoming") return null;
 
@@ -59,10 +86,10 @@ const IncomingCallModal = () => {
         <Text style={styles.name}>{remoteUserName || "Someone"}</Text>
 
         <View style={styles.actions}>
-          <Pressable style={[styles.actionButton, styles.rejectButton]} onPress={rejectCall}>
+          <Pressable style={[styles.actionButton, styles.rejectButton]} onPress={handleReject}>
             <Ionicons name="close" size={32} color="#fff" />
           </Pressable>
-          <Pressable style={[styles.actionButton, styles.acceptButton]} onPress={acceptCall}>
+          <Pressable style={[styles.actionButton, styles.acceptButton]} onPress={handleAccept}>
             <Ionicons name="call" size={32} color="#fff" />
           </Pressable>
         </View>

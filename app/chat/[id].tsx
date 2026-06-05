@@ -293,15 +293,7 @@ const ChatDetailScreen = () => {
 
         <View style={styles.headerActions}>
           <Pressable
-            // onPress={() => startCall(participantId, name, avatar || "")}
-            onPress={() => {
-              console.log("CALL BUTTON CLICKED");
-              console.log("participantId =", participantId);
-              console.log("name =", name);
-              console.log("avatar =", avatar);
-
-              startCall(participantId, name, avatar || "");
-            }}
+            onPress={() => startCall(participantId, name, avatar || "")}
             style={({ pressed }) => [
               styles.actionButton,
               pressed && styles.pressedState,

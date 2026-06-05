@@ -11,17 +11,8 @@ import { create } from "zustand";
 import { API_URL } from "../constants/Config";
 import { useSocketStore } from "./socket";
 
-// Define RTCConfiguration locally since react-native-webrtc doesn't export it
-interface RTCConfig {
-  iceServers: Array<{
-    urls: string | string[];
-    username?: string;
-    credential?: string;
-  }>;
-}
-
 export interface CallState {
-  callStatus: "idle" | "calling" | "incoming" | "connected";
+  callStatus: "idle" | "outgoing" | "incoming" | "active";
   callType: "audio" | "video" | null;
   remoteUserId: string | null;
   remoteUserName: string | null;
@@ -32,10 +23,12 @@ export interface CallState {
   isMuted: boolean;
   isSpeakerOn: boolean;
   callDurationSeconds: number;
+  callId: string | null;
   _callTimeoutId: any | null;
   _durationTimerId: any | null;
   pendingCandidates: any[];
   incomingOffer: any;
+  _listenersInitialized: boolean;
 
   initCallListeners: () => void;
   setIncomingCallFromPush: (data: {
@@ -54,31 +47,11 @@ export interface CallState {
   endCall: () => void;
   toggleMute: () => void;
   toggleSpeaker: () => void;
-
   _handleIncomingCall: (data: any) => void;
   _handleCallAnswer: (answer: any) => Promise<void>;
   _handleRemoteIceCandidate: (candidate: any) => Promise<void>;
   _cleanup: () => void;
 }
-
-// const fetchIceServers = async (): Promise<RTCConfig> => {
-//   try {
-//     const apiUrl =
-//       process.env.EXPO_PUBLIC_API_URL ||
-//       "https://chat-app-backend-zj3i.onrender.com//api/turn/credentials";
-//     const response = await fetch(`${apiUrl}/api/turn/credentials`);
-//     const iceServers = await response.json();
-//     return { iceServers };
-//   } catch (err) {
-//     console.log("Failed to fetch TURN credentials, falling back to STUN only");
-//     return {
-//       iceServers: [
-//         { urls: "stun:stun.l.google.com:19302" },
-//         { urls: "stun:stun1.l.google.com:19302" },
-//       ],
-//     };
-//   }
-// };
 
 const fetchIceServers = async () => {
   try {
@@ -112,14 +85,23 @@ export const useCallStore = create<CallState>((set, get) => ({
   isMuted: false,
   isSpeakerOn: false,
   callDurationSeconds: 0,
+  callId: null,
   _callTimeoutId: null,
   _durationTimerId: null,
   pendingCandidates: [],
   incomingOffer: null,
+  _listenersInitialized: false,
 
   initCallListeners: () => {
     const socket = useSocketStore.getState().socket;
     if (!socket) return;
+
+    // Remove all existing call listeners to prevent duplicates
+    socket.off("incoming-call");
+    socket.off("call-answer-forwarded");
+    socket.off("ice-candidate-forwarded");
+    socket.off("call-ended");
+    socket.off("call-rejected");
 
     socket.on("incoming-call", (data) => {
       get()._handleIncomingCall(data);
@@ -136,6 +118,12 @@ export const useCallStore = create<CallState>((set, get) => ({
     socket.on("call-ended", () => {
       get()._cleanup();
     });
+
+    socket.on("call-rejected", () => {
+      get()._cleanup();
+    });
+
+    set({ _listenersInitialized: true });
   },
 
   setIncomingCallFromPush: ({
@@ -154,49 +142,27 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   startCall: async (targetUserId, name, avatar) => {
-    console.log("STEP 1 - startCall called");
-    console.log("targetUserId =", targetUserId);
-
     const socket = useSocketStore.getState().socket;
-
-    console.log("STEP 2 - socket exists =", !!socket);
-    console.log("STEP 3 - socket connected =", socket?.connected);
-    // const socket = useSocketStore.getState().socket;
     if (!socket) return;
 
     try {
-      // Request audio stream
-      console.log("STEP 4 - requesting microphone");
       const stream = await mediaDevices.getUserMedia({
         audio: true,
         video: false,
       });
 
-      console.log("STEP 5 - microphone granted");
       const iceConfig = await fetchIceServers();
 
       const pc = new RTCPeerConnection({
         iceServers: iceConfig.iceServers,
       } as any);
 
-      console.log("ICE CONFIG =", JSON.stringify(iceConfig, null, 2));
-
-      console.log("STEP 6 - creating peer connection");
-
-      // const pc = new RTCPeerConnection({
-      //   iceServers: [
-      //     {
-      //       urls: "stun:stun.l.google.com:19302",
-      //     },
-      //   ],
-      // } as any);
-
       // Add audio tracks to peer connection
       stream.getTracks().forEach((track) => {
         pc.addTrack(track, stream);
       });
 
-      // Handle ICE candidates (cast to any due to incomplete react-native-webrtc types)
+      // Handle ICE candidates
       (pc as any).onicecandidate = (event: any) => {
         if (event.candidate) {
           socket.emit("ice-candidate", {
@@ -220,6 +186,41 @@ export const useCallStore = create<CallState>((set, get) => ({
         }
       };
 
+      // Monitor ICE connection state
+      (pc as any).oniceconnectionstatechange = () => {
+        const state = (pc as any).iceConnectionState;
+        console.log("[Call] ICE connection state:", state);
+
+        if (state === "connected" || state === "completed") {
+          // Connection established
+          if (get().callStatus === "outgoing") {
+            // Start call audio management
+            InCallManager.start({ media: "audio" });
+            InCallManager.setKeepScreenOn(true);
+
+            // Start duration timer
+            const timerId = setInterval(() => {
+              set((s) => ({
+                callDurationSeconds: s.callDurationSeconds + 1,
+              }));
+            }, 1000);
+
+            // Clear call timeout
+            const timeoutId = get()._callTimeoutId;
+            if (timeoutId) clearTimeout(timeoutId);
+
+            set({
+              callStatus: "active",
+              _durationTimerId: timerId,
+              _callTimeoutId: null,
+            });
+          }
+        } else if (state === "failed" || state === "disconnected") {
+          console.log("[Call] ICE connection failed/disconnected — cleaning up");
+          get()._cleanup();
+        }
+      };
+
       set({
         localStream: stream,
         peerConnection: pc,
@@ -230,28 +231,21 @@ export const useCallStore = create<CallState>((set, get) => ({
       });
 
       // Create and send offer
-      console.log("STEP 7 - creating offer");
       const offer = await pc.createOffer();
-      console.log("STEP 8 - offer created");
       await pc.setLocalDescription(offer);
 
-      const currentUserId = socket.id;
-
-      console.log("STEP 9 - sending call offer");
+      // Backend handles caller identity — do NOT send callerName/callerAvatar
       socket.emit("call-offer", {
         targetUserId,
-        callerId: currentUserId,
         offer,
         callType: "audio",
-        callerName: "You",
-        callerAvatar: "",
       });
 
-      set({ callStatus: "calling" });
+      set({ callStatus: "outgoing" });
 
       // 60-second timeout
       const timeoutId = setTimeout(() => {
-        if (get().callStatus === "calling") {
+        if (get().callStatus === "outgoing") {
           console.log("[Call] No answer — timing out");
           socket.emit("call-end", { targetUserId });
           get()._cleanup();
@@ -260,7 +254,7 @@ export const useCallStore = create<CallState>((set, get) => ({
 
       set({ _callTimeoutId: timeoutId });
     } catch (e) {
-      console.error("Failed to start call", e);
+      console.error("Failed to start call:", e);
       get()._cleanup();
     }
   },
@@ -275,15 +269,13 @@ export const useCallStore = create<CallState>((set, get) => ({
     }
 
     try {
-      // Request audio stream
-      console.log("STEP 4 - requesting microphone");
       const stream = await mediaDevices.getUserMedia({
         audio: true,
         video: false,
       });
+
       const iceConfig = await fetchIceServers();
 
-      // Create peer connection
       const pc = new RTCPeerConnection({
         iceServers: iceConfig.iceServers,
       } as any);
@@ -293,7 +285,7 @@ export const useCallStore = create<CallState>((set, get) => ({
         pc.addTrack(track, stream);
       });
 
-      // Handle ICE candidates (cast to any due to incomplete react-native-webrtc types)
+      // Handle ICE candidates
       (pc as any).onicecandidate = (event: any) => {
         if (event.candidate) {
           socket.emit("ice-candidate", {
@@ -314,6 +306,17 @@ export const useCallStore = create<CallState>((set, get) => ({
       (pc as any).onaddstream = (event: any) => {
         if (event.stream) {
           set({ remoteStream: event.stream });
+        }
+      };
+
+      // Monitor ICE connection state
+      (pc as any).oniceconnectionstatechange = () => {
+        const state = (pc as any).iceConnectionState;
+        console.log("[Call] ICE connection state (receiver):", state);
+
+        if (state === "failed" || state === "disconnected") {
+          console.log("[Call] ICE connection failed/disconnected — cleaning up");
+          get()._cleanup();
         }
       };
 
@@ -350,10 +353,10 @@ export const useCallStore = create<CallState>((set, get) => ({
             callDurationSeconds: state.callDurationSeconds + 1,
           }));
         }, 1000);
-        set({ _durationTimerId: timerId, callStatus: "connected" });
+        set({ _durationTimerId: timerId, callStatus: "active" });
       }
     } catch (e) {
-      console.error("Failed to accept call", e);
+      console.error("Failed to accept call:", e);
       get()._cleanup();
     }
   },
@@ -362,7 +365,7 @@ export const useCallStore = create<CallState>((set, get) => ({
     const socket = useSocketStore.getState().socket;
     const { remoteUserId } = get();
     if (socket && remoteUserId) {
-      socket.emit("call-end", { targetUserId: remoteUserId });
+      socket.emit("call-reject", { targetUserId: remoteUserId });
     }
     get()._cleanup();
   },
@@ -393,6 +396,9 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   _handleIncomingCall: (data) => {
+    // Don't accept new calls if already in one
+    if (get().callStatus !== "idle") return;
+
     set({
       callStatus: "incoming",
       remoteUserId: data.callerId,
@@ -400,6 +406,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       remoteUserAvatar: data.callerAvatar,
       callType: data.callType,
       incomingOffer: data.offer,
+      callId: data.callId || null,
     });
   },
 
@@ -420,7 +427,11 @@ export const useCallStore = create<CallState>((set, get) => ({
           console.error("Error adding pending ice candidate:", err);
         }
       }
-      set({ pendingCandidates: [], callStatus: "connected" });
+      set({ pendingCandidates: [] });
+
+      // Clear call timeout
+      const timeoutId = get()._callTimeoutId;
+      if (timeoutId) clearTimeout(timeoutId);
 
       // Start call audio management
       InCallManager.start({ media: "audio" });
@@ -432,9 +443,13 @@ export const useCallStore = create<CallState>((set, get) => ({
           callDurationSeconds: state.callDurationSeconds + 1,
         }));
       }, 1000);
-      set({ _durationTimerId: timerId });
+      set({
+        _durationTimerId: timerId,
+        _callTimeoutId: null,
+        callStatus: "active",
+      });
     } catch (e) {
-      console.error("Failed to handle call answer", e);
+      console.error("Failed to handle call answer:", e);
     }
   },
 
@@ -445,7 +460,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       try {
         await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (e) {
-        console.error("Failed to add ice candidate", e);
+        console.error("Failed to add ice candidate:", e);
       }
     } else {
       // Queue for later if remote description isn't set yet
@@ -458,10 +473,28 @@ export const useCallStore = create<CallState>((set, get) => ({
       get();
 
     // Stop all audio/video tracks
-    localStream?.getTracks().forEach((track) => track.stop());
+    if (localStream) {
+      localStream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (e) {
+          // Track may already be stopped
+        }
+      });
+    }
 
     // Close peer connection
-    peerConnection?.close();
+    if (peerConnection) {
+      try {
+        (peerConnection as any).onicecandidate = null;
+        (peerConnection as any).ontrack = null;
+        (peerConnection as any).onaddstream = null;
+        (peerConnection as any).oniceconnectionstatechange = null;
+        peerConnection.close();
+      } catch (e) {
+        // Connection may already be closed
+      }
+    }
 
     // Stop call audio management
     InCallManager.stop();
@@ -484,6 +517,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       isMuted: false,
       isSpeakerOn: false,
       callDurationSeconds: 0,
+      callId: null,
       _callTimeoutId: null,
       _durationTimerId: null,
       pendingCandidates: [],

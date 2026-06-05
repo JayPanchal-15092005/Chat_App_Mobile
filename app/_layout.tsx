@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/constants/Theme";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useTheme } from "@/hooks/useTheme";
 import IncomingCallModal from "@/components/IncomingCallModal";
+import OutgoingCallScreen from "@/components/OutgoingCallScreen";
 import ActiveCallScreen from "@/components/ActiveCallScreen";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import * as Sentry from "@sentry/react-native";
@@ -80,6 +81,7 @@ function AppContent() {
       {/* Only mount PushNotificationSetup after sign-in so apiWithAuth works */}
       {isSignedIn && <PushNotificationSetup />}
       <IncomingCallModal />
+      <OutgoingCallScreen />
       <ActiveCallScreen />
       <Stack
         screenOptions={{

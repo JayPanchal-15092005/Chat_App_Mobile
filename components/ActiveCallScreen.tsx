@@ -32,7 +32,7 @@ const ActiveCallScreen = () => {
 
   const { colors } = useTheme();
 
-  if (callStatus !== "connected" && callStatus !== "calling") return null;
+  if (callStatus !== "active") return null;
 
   return (
     <View style={styles.container}>
@@ -58,9 +58,7 @@ const ActiveCallScreen = () => {
 
       <View style={styles.header}>
         <Text style={styles.name}>{remoteUserName || "Someone"}</Text>
-        <Text style={styles.status}>
-          {callStatus === "calling" ? "Calling..." : formatTime(callDurationSeconds)}
-        </Text>
+        <Text style={styles.status}>{formatTime(callDurationSeconds)}</Text>
       </View>
 
       <View style={styles.controls}>
