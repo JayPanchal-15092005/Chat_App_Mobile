@@ -2,6 +2,7 @@ import AuthSync from "@/components/AuthSync";
 import SocketConnection from "@/components/SocketConnection";
 import { ThemeProvider } from "@/constants/Theme";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useCallNotification } from "@/hooks/useCallKeep";
 import { useTheme } from "@/hooks/useTheme";
 import IncomingCallModal from "@/components/IncomingCallModal";
 import OutgoingCallScreen from "@/components/OutgoingCallScreen";
@@ -66,6 +67,14 @@ function PushNotificationSetup() {
   return null;
 }
 
+// CallKeepSetup initializes the native VoIP ConnectionService and event
+// listeners. Must run unconditionally (before sign-in) so that killed-app
+// call notification responses are handled immediately on cold start.
+function CallNotificationSetup() {
+  useCallNotification();
+  return null;
+}
+
 // ─────────────────────────────────────────────
 // AppContent — rendered inside all providers
 // ─────────────────────────────────────────────
@@ -78,6 +87,7 @@ function AppContent() {
       <StatusBar style={colors.isDark ? "light" : "dark"} backgroundColor={colors.surface.default} />
       <AuthSync />
       <SocketConnection />
+      <CallNotificationSetup />
       {/* Only mount PushNotificationSetup after sign-in so apiWithAuth works */}
       {isSignedIn && <PushNotificationSetup />}
       <IncomingCallModal />

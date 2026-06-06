@@ -10,6 +10,11 @@ import {
 import { create } from "zustand";
 import { API_URL } from "../constants/Config";
 import { useSocketStore } from "./socket";
+// Imported lazily to avoid circular dependency (useCallKeep -> callStore -> useCallKeep)
+let _endCallViaCallKeep: (() => void) | null = null;
+export function __registerCallKeepEndCall(fn: () => void) {
+  _endCallViaCallKeep = fn;
+}
 
 export interface CallState {
   callStatus: "idle" | "outgoing" | "incoming" | "active";
@@ -29,6 +34,15 @@ export interface CallState {
   pendingCandidates: any[];
   incomingOffer: any;
   _listenersInitialized: boolean;
+  // Push-notification state: stores call payload when app is
+  // opened from a killed/background state via a notification tap.
+  pendingPushCallData: {
+    callerId: string;
+    callerName: string;
+    callerAvatar: string;
+    callType: "audio" | "video";
+    callId: string;
+  } | null;
 
   initCallListeners: () => void;
   setIncomingCallFromPush: (data: {
@@ -36,7 +50,9 @@ export interface CallState {
     callerName: string;
     callerAvatar: string;
     callType: "audio" | "video";
+    callId?: string;
   }) => void;
+  acceptCallFromPush: () => void;
   startCall: (
     targetUserId: string,
     name: string,
@@ -91,6 +107,7 @@ export const useCallStore = create<CallState>((set, get) => ({
   pendingCandidates: [],
   incomingOffer: null,
   _listenersInitialized: false,
+  pendingPushCallData: null,
 
   initCallListeners: () => {
     const socket = useSocketStore.getState().socket;
@@ -131,14 +148,40 @@ export const useCallStore = create<CallState>((set, get) => ({
     callerName,
     callerAvatar,
     callType,
+    callId,
   }) => {
+    // Store the push payload. The IncomingCallModal will display immediately.
+    // If the socket reconnects and sends a fresh incoming-call event (with the
+    // SDP offer), _handleIncomingCall will merge the offer into existing state.
     set({
       callStatus: "incoming",
       remoteUserId: callerId,
       remoteUserName: callerName,
       remoteUserAvatar: callerAvatar,
-      callType,
+      callType: callType ?? "audio",
+      callId: callId ?? null,
+      pendingPushCallData: {
+        callerId,
+        callerName,
+        callerAvatar,
+        callType: callType ?? "audio",
+        callId: callId ?? "",
+      },
     });
+  },
+
+  // Called when the user taps "Accept" on the OS notification while the app
+  // is backgrounded or killed. We mark the state so that once the socket
+  // reconnects, acceptCall() is triggered automatically.
+  acceptCallFromPush: () => {
+    const { callStatus } = get();
+    if (callStatus === "incoming") {
+      // Offer should have arrived via socket by now
+      get().acceptCall();
+    } else {
+      // App was killed — offer not arrived yet. Mark as auto-accept when it does.
+      set({ pendingPushCallData: { ...(get().pendingPushCallData as any), _autoAccept: true } });
+    }
   },
 
   startCall: async (targetUserId, name, avatar) => {
@@ -363,19 +406,23 @@ export const useCallStore = create<CallState>((set, get) => ({
 
   rejectCall: () => {
     const socket = useSocketStore.getState().socket;
-    const { remoteUserId } = get();
+    const { remoteUserId, callId } = get();
     if (socket && remoteUserId) {
-      socket.emit("call-reject", { targetUserId: remoteUserId });
+      socket.emit("call-reject", { targetUserId: remoteUserId, callId });
     }
+    // Dismiss the native CallKeep call screen
+    _endCallViaCallKeep?.();
     get()._cleanup();
   },
 
   endCall: () => {
     const socket = useSocketStore.getState().socket;
-    const { remoteUserId } = get();
+    const { remoteUserId, callId } = get();
     if (socket && remoteUserId) {
-      socket.emit("call-end", { targetUserId: remoteUserId });
+      socket.emit("call-end", { targetUserId: remoteUserId, callId });
     }
+    // Dismiss the native CallKeep call screen
+    _endCallViaCallKeep?.();
     get()._cleanup();
   },
 
@@ -396,8 +443,28 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   _handleIncomingCall: (data) => {
-    // Don't accept new calls if already in one
-    if (get().callStatus !== "idle") return;
+    const { callStatus, pendingPushCallData } = get();
+
+    if (callStatus === "incoming" && pendingPushCallData) {
+      // App was opened from a push notification and is already showing
+      // IncomingCallModal. The socket just reconnected and sent the offer.
+      // Merge the offer in — do NOT reset the caller UI.
+      set({
+        incomingOffer: data.offer,
+        // Update callId if the socket provides a fresh one
+        callId: data.callId || get().callId,
+      });
+
+      // If the user already tapped Accept on the OS notification, auto-accept now
+      if ((pendingPushCallData as any)._autoAccept) {
+        set({ pendingPushCallData: null });
+        get().acceptCall();
+      }
+      return;
+    }
+
+    // Normal case: app is idle, incoming call arrives via socket
+    if (callStatus !== "idle") return;
 
     set({
       callStatus: "incoming",
@@ -407,6 +474,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       callType: data.callType,
       incomingOffer: data.offer,
       callId: data.callId || null,
+      pendingPushCallData: null,
     });
   },
 
@@ -522,6 +590,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       _durationTimerId: null,
       pendingCandidates: [],
       incomingOffer: null,
+      pendingPushCallData: null,
     });
   },
 }));

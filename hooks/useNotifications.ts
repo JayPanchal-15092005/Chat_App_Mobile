@@ -1,113 +1,151 @@
 import { useApi } from "@/lib/axios";
+import { useCallStore } from "@/lib/callStore";
+import { useSocketStore } from "@/lib/socket";
 import { useAuth } from "@clerk/clerk-expo";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
-import { useCallStore } from "@/lib/callStore";
 import { useEffect, useRef } from "react";
-import { AppState, Platform } from "react-native";
+import { Platform } from "react-native";
+import { displayIncomingCallViaCallKeep } from "@/hooks/useCallKeep";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Configure how notifications appear when the app is foregrounded
+// Foreground notification handler
+// - Call notifications are suppressed when app is active (CallKeep / socket handles it)
+// - Message notifications always show
 // ─────────────────────────────────────────────────────────────────────────────
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async (notification) => {
+    const data = notification.request.content.data as any;
+
+    if (data?.type === "incoming-call") {
+      // Foreground: socket event already triggered IncomingCallModal
+      return {
+        shouldShowAlert: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: false,
+        shouldShowList: false,
+      };
+    }
+
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    };
+  },
 });
 
 /**
- * Handles everything related to push notifications:
- * 1. Requests permission
- * 2. Gets the Expo push token (routes to FCM on Android)
- * 3. Saves the token to the backend (only when user is signed in)
- * 4. Navigates to the relevant chat when a notification is tapped
+ * useNotifications — handles chat push notifications and token registration.
  *
- * Must be rendered inside ClerkProvider + QueryClientProvider.
+ * Call notifications are handled by useCallKeep (the CallKeep integration).
+ * This hook only deals with:
+ *  1. Requesting push permission
+ *  2. Registering the FCM/Expo push token to the backend
+ *  3. Navigating to chats when a chat notification is tapped
+ *  4. Checking for cold-start call notifications (app was killed)
  */
 export function useNotifications() {
   const { isSignedIn } = useAuth();
   const { apiWithAuth } = useApi();
   const router = useRouter();
-
-  const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
-  const tokenRegistered = useRef(false); // prevent registering more than once per session
+  const receivedListener = useRef<Notifications.EventSubscription | null>(null);
+  const tokenRegistered = useRef(false);
 
-  // ─── Notification tap listener (always active) ───────────────────────────
+  // ── Notification response listener (tap on notification) ────────────────
   useEffect(() => {
-    notificationListener.current =
-      Notifications.addNotificationReceivedListener((_notification) => {
-        // Notification received while app is in foreground — handler above shows it
-      });
-
     responseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
-        const data = response.notification.request.content.data as any;
-        console.log("[Notifications] Tapped notification data:", data);
-
-        if (data?.type === "incoming-call") {
-          const { callerId, callerName, callerAvatar, callType } = data;
-          useCallStore.getState().setIncomingCallFromPush({ callerId, callerName, callerAvatar, callType });
-        } else if (data?.chatId && data?.participantId && data?.name) {
-          router.push({
-            pathname: "/chat/[id]",
-            params: {
-              id: data.chatId,
-              participantId: data.participantId,
-              name: data.name,
-              avatar: data.avatar ?? "",
-            },
-          });
-        }
+        handleResponse(response);
       });
 
+    // Cold start — app was killed and opened via a notification tap
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) handleResponse(response);
+    });
+
+    // Received in foreground (call type is suppressed by handler above)
+    receivedListener.current = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        const data = notification.request.content.data as any;
+        console.log("[Notifications] Foreground received:", data?.type ?? "message");
+      },
+    );
+
     return () => {
-      notificationListener.current?.remove();
       responseListener.current?.remove();
+      receivedListener.current?.remove();
     };
   }, []);
 
-  // ─── Token registration (only when user is authenticated) ────────────────
+  // ── Token registration ───────────────────────────────────────────────────
   useEffect(() => {
-    // Only run once the user is fully signed in, and only once per session
     if (!isSignedIn || tokenRegistered.current) return;
-
     registerForPushNotifications();
   }, [isSignedIn]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  function handleResponse(response: Notifications.NotificationResponse) {
+    const data = response.notification.request.content.data as any;
+    const actionId = response.actionIdentifier;
+
+    console.log("[Notifications] Response — action:", actionId, "type:", data?.type);
+
+    if (data?.type === "incoming-call") {
+      // App was tapped open from a call notification (not from CallKeep native UI)
+      // Show IncomingCallModal so the user can accept/reject inside the app.
+      const { callerId, callerName, callerAvatar, callType, callId } = data;
+      useCallStore.getState().setIncomingCallFromPush({
+        callerId,
+        callerName,
+        callerAvatar,
+        callType: callType ?? "audio",
+        callId,
+      });
+
+    } else if (data?.chatId && data?.participantId && data?.name) {
+      // Chat message notification — navigate to the conversation
+      router.push({
+        pathname: "/chat/[id]",
+        params: {
+          id: data.chatId,
+          participantId: data.participantId,
+          name: data.name,
+          avatar: data.avatar ?? "",
+        },
+      });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   async function registerForPushNotifications() {
-    // Push notifications only work on physical devices
     if (!Device.isDevice) {
       console.log("[Notifications] Skipping — not a physical device.");
       return;
     }
 
-    // Request permission
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    let finalStatus = existing;
 
-    if (existingStatus !== "granted") {
-      console.log("[Notifications] Requesting permission...");
+    if (existing !== "granted") {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
 
     if (finalStatus !== "granted") {
-      console.warn("[Notifications] Permission not granted — status:", finalStatus);
+      console.warn("[Notifications] Permission not granted:", finalStatus);
       return;
     }
 
-    console.log("[Notifications] Permission granted.");
-
-    // Android requires a notification channel to be set up
     if (Platform.OS === "android") {
+      // Messages channel only — call channel is handled by CallKeep's
+      // ConnectionService foreground service config
       await Notifications.setNotificationChannelAsync("messages", {
         name: "Messages",
         importance: Notifications.AndroidImportance.MAX,
@@ -116,42 +154,35 @@ export function useNotifications() {
         sound: "default",
         showBadge: true,
       });
-      console.log("[Notifications] Android channel set up.");
+      console.log("[Notifications] Android messages channel set up.");
     }
 
     try {
-      // projectId is REQUIRED for Expo SDK 50+ — without it the call fails
       const projectId =
         Constants.expoConfig?.extra?.eas?.projectId ??
         Constants.easConfig?.projectId;
 
       if (!projectId) {
-        console.error(
-          "[Notifications] Missing projectId in app.json extra.eas.projectId — cannot get push token."
-        );
+        console.error("[Notifications] Missing projectId.");
         return;
       }
 
-      console.log("[Notifications] Getting Expo push token for projectId:", projectId);
-
       const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
       const expoPushToken = tokenData.data;
-
       console.log("[Notifications] Expo push token:", expoPushToken);
 
-      // Save the token to the backend
-      const response = await apiWithAuth({
+      await apiWithAuth({
         method: "PATCH",
         url: "/users/fcm-token",
         data: { fcmToken: expoPushToken },
       });
 
-      console.log("[Notifications] Token saved to backend:", response.data);
+      console.log("[Notifications] Token saved to backend.");
       tokenRegistered.current = true;
     } catch (error: any) {
       console.error(
-        "[Notifications] Failed to get/register push token:",
-        error?.response?.data ?? error?.message ?? error
+        "[Notifications] Failed:",
+        error?.response?.data ?? error?.message ?? error,
       );
     }
   }

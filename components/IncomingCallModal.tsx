@@ -1,22 +1,36 @@
-import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, Dimensions, Vibration } from "react-native";
-import { Image } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "@/hooks/useTheme";
 import { useCallStore } from "@/lib/callStore";
+import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import React, { useEffect } from "react";
+import {
+  Dimensions,
+  Pressable,
+  StyleSheet,
+  Text,
+  Vibration,
+  View,
+} from "react-native";
 import InCallManager from "react-native-incall-manager";
 import Animated, {
-  useSharedValue,
+  Easing,
   useAnimatedStyle,
+  useSharedValue,
   withRepeat,
   withTiming,
-  Easing,
 } from "react-native-reanimated";
-import { useTheme } from "@/hooks/useTheme";
 
 const { width, height } = Dimensions.get("window");
 
 const IncomingCallModal = () => {
-  const { callStatus, remoteUserName, remoteUserAvatar, callType, acceptCall, rejectCall } = useCallStore();
+  const {
+    callStatus,
+    remoteUserName,
+    remoteUserAvatar,
+    callType,
+    acceptCall,
+    rejectCall,
+  } = useCallStore();
   const { colors } = useTheme();
 
   const pulse = useSharedValue(1);
@@ -27,14 +41,14 @@ const IncomingCallModal = () => {
       pulse.value = withRepeat(
         withTiming(1.2, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
         -1,
-        true
+        true,
       );
 
       // Start vibration pattern (500ms vibrate, 1000ms pause, repeat)
       Vibration.vibrate([500, 1000], true);
 
       // Start ringtone
-      InCallManager.startRingtone("_DEFAULT_");
+      (InCallManager as any).startRingtone("_DEFAULT_");
     } else {
       pulse.value = 1;
     }
@@ -70,15 +84,36 @@ const IncomingCallModal = () => {
     <View style={styles.container}>
       <View style={styles.overlay} />
       <View style={styles.content}>
-        <Text style={styles.title}>Incoming {callType === "video" ? "Video" : "Audio"} Call</Text>
+        <Text style={styles.title}>
+          Incoming {callType === "video" ? "Video" : "Audio"} Call
+        </Text>
 
         <View style={styles.avatarContainer}>
-          <Animated.View style={[styles.pulseRing, animatedStyle, { borderColor: colors.primary.default }]} />
+          <Animated.View
+            style={[
+              styles.pulseRing,
+              animatedStyle,
+              { borderColor: colors.primary.default },
+            ]}
+          />
           {remoteUserAvatar ? (
-            <Image source={{ uri: remoteUserAvatar }} style={styles.avatar} contentFit="cover" />
+            <Image
+              source={{ uri: remoteUserAvatar }}
+              style={styles.avatar}
+              contentFit="cover"
+            />
           ) : (
-            <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface.light }]}>
-              <Ionicons name="person" size={60} color={colors.subtleForeground} />
+            <View
+              style={[
+                styles.avatarPlaceholder,
+                { backgroundColor: colors.surface.light },
+              ]}
+            >
+              <Ionicons
+                name="person"
+                size={60}
+                color={colors.subtleForeground}
+              />
             </View>
           )}
         </View>
@@ -86,10 +121,16 @@ const IncomingCallModal = () => {
         <Text style={styles.name}>{remoteUserName || "Someone"}</Text>
 
         <View style={styles.actions}>
-          <Pressable style={[styles.actionButton, styles.rejectButton]} onPress={handleReject}>
+          <Pressable
+            style={[styles.actionButton, styles.rejectButton]}
+            onPress={handleReject}
+          >
             <Ionicons name="close" size={32} color="#fff" />
           </Pressable>
-          <Pressable style={[styles.actionButton, styles.acceptButton]} onPress={handleAccept}>
+          <Pressable
+            style={[styles.actionButton, styles.acceptButton]}
+            onPress={handleAccept}
+          >
             <Ionicons name="call" size={32} color="#fff" />
           </Pressable>
         </View>

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.31",
+    "@config-plugins/react-native-callkeep": "^14.0.1",
     "@expo/vector-icons": "^15.0.3",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
@@ -47,6 +48,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-callkeep": "^4.3.16",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-get-random-values": "~1.11.0",
     "react-native-incall-manager": "^4.2.1",
@@ -78,6 +80,7 @@
         "exclude": [
           "react-native-incall-manager",
           "react-native-webrtc",
+          "react-native-callkeep",
           "@solana-mobile/mobile-wallet-adapter-protocol"
         ]
       }
