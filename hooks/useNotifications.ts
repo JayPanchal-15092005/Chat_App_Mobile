@@ -87,9 +87,28 @@ export function useNotifications() {
 
   // ── Token registration ───────────────────────────────────────────────────
   useEffect(() => {
-    if (!isSignedIn || tokenRegistered.current) return;
-    registerForPushNotifications();
-  }, [isSignedIn]);
+    if (!isSignedIn) return;
+
+    if (!tokenRegistered.current) {
+      registerForPushNotifications();
+    }
+
+    // Automatically update the backend if the FCM token changes
+    const unsubscribe = messaging().onTokenRefresh(async (newToken) => {
+      console.log("[Notifications] FCM Token Refreshed:", newToken);
+      try {
+        await apiWithAuth({
+          method: "PATCH",
+          url: "/users/push-tokens",
+          data: { fcmToken: newToken },
+        });
+      } catch (err) {
+        console.error("[Notifications] Failed to sync refreshed FCM token:", err);
+      }
+    });
+
+    return unsubscribe;
+  }, [isSignedIn, apiWithAuth]);
 
   // ─────────────────────────────────────────────────────────────────────────
   function handleResponse(response: Notifications.NotificationResponse) {
