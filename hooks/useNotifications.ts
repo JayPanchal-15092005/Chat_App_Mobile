@@ -9,6 +9,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 import { displayIncomingCallViaCallKeep } from "@/hooks/useCallKeep";
+import messaging from "@react-native-firebase/messaging";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Foreground notification handler
@@ -171,13 +172,23 @@ export function useNotifications() {
       const expoPushToken = tokenData.data;
       console.log("[Notifications] Expo push token:", expoPushToken);
 
+      // Get Raw FCM Token for Firebase Messaging (VoIP)
+      let fcmToken = null;
+      try {
+        await messaging().registerDeviceForRemoteMessages();
+        fcmToken = await messaging().getToken();
+        console.log("[Notifications] FCM raw token:", fcmToken);
+      } catch (fcmErr) {
+        console.warn("[Notifications] Failed to get FCM token:", fcmErr);
+      }
+
       await apiWithAuth({
         method: "PATCH",
-        url: "/users/fcm-token",
-        data: { fcmToken: expoPushToken },
+        url: "/users/push-tokens",
+        data: { expoPushToken, fcmToken },
       });
 
-      console.log("[Notifications] Token saved to backend.");
+      console.log("[Notifications] Tokens saved to backend.");
       tokenRegistered.current = true;
     } catch (error: any) {
       console.error(

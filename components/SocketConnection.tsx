@@ -15,10 +15,9 @@ const SocketConnection = () => {
       getToken().then((token) => {
         if (token) {
           connect(token, queryClient);
-          // Only init listeners once to prevent duplicates
-          if (!useCallStore.getState()._listenersInitialized) {
-            useCallStore.getState().initCallListeners();
-          }
+          // Always init listeners when connect is called.
+          // initCallListeners is idempotent and safely removes old listeners first.
+          useCallStore.getState().initCallListeners();
         }
       });
     } else {

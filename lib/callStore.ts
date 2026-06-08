@@ -152,6 +152,10 @@ export const useCallStore = create<CallState>((set, get) => ({
     });
 
     set({ _listenersInitialized: true });
+
+    // ── Check for missed/ongoing calls when socket connects ───────────
+    socket.emit("fetch-ongoing-call");
+    console.log("[CallStore] Requested fetch-ongoing-call");
   },
 
   // ────────────────────────────────────────────────────────────────────────
