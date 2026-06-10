@@ -47,6 +47,10 @@ const ActiveCallScreen = () => {
               <Ionicons name="person" size={80} color={colors.subtleForeground} />
             </View>
           )}
+          {/* CRITICAL: react-native-webrtc requires an RTCView to bind audio tracks even in audio-only calls */}
+          {remoteStream && (
+            <RTCView streamURL={remoteStream.toURL()} style={{ width: 0, height: 0, opacity: 0 }} />
+          )}
         </View>
       )}
 

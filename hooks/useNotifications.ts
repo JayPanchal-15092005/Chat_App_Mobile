@@ -9,7 +9,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 import { displayIncomingCallViaCallKeep } from "@/hooks/useCallKeep";
-import messaging from "@react-native-firebase/messaging";
+import { getMessaging, getToken, onTokenRefresh, registerDeviceForRemoteMessages } from "@react-native-firebase/messaging";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Foreground notification handler
@@ -94,7 +94,7 @@ export function useNotifications() {
     }
 
     // Automatically update the backend if the FCM token changes
-    const unsubscribe = messaging().onTokenRefresh(async (newToken) => {
+    const unsubscribe = onTokenRefresh(getMessaging(), async (newToken) => {
       console.log("[Notifications] FCM Token Refreshed:", newToken);
       try {
         await apiWithAuth({
@@ -194,8 +194,8 @@ export function useNotifications() {
       // Get Raw FCM Token for Firebase Messaging (VoIP)
       let fcmToken = null;
       try {
-        await messaging().registerDeviceForRemoteMessages();
-        fcmToken = await messaging().getToken();
+        await registerDeviceForRemoteMessages(getMessaging());
+        fcmToken = await getToken(getMessaging());
         console.log("[Notifications] FCM raw token:", fcmToken);
       } catch (fcmErr) {
         console.warn("[Notifications] Failed to get FCM token:", fcmErr);

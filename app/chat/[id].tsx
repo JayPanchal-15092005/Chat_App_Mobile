@@ -52,6 +52,11 @@ const ChatDetailScreen = () => {
   const [isSending, setIsSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
+  // Pending media (preview before send)
+  const [pendingImage, setPendingImage] = useState<{ uri: string; base64?: string } | null>(null);
+  const [pendingVoice, setPendingVoice] = useState<string | null>(null);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+
   // Audio recorder via expo-audio (SDK 54)
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [isRecording, setIsRecording] = useState(false);
@@ -155,8 +160,7 @@ const ChatDetailScreen = () => {
 
   const handlePickImage = async () => {
     try {
-      const permission =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
         console.warn("Media library permission denied");
         return;
@@ -166,38 +170,29 @@ const ChatDetailScreen = () => {
         allowsEditing: true,
         quality: 0.7,
       });
-      if (!result.canceled && result.assets?.[0] && currentUser) {
-        setIsSending(true);
-        try {
-          const token = await getToken();
-          if (!token) throw new Error("No token");
-          const url = await uploadToImageKit(
-            result.assets[0].uri,
-            "image",
-            token,
-          );
-          sendMessage(
-            chatId,
-            "📸 Image",
-            {
-              _id: currentUser._id,
-              name: currentUser.name,
-              email: currentUser.email,
-              avatar: currentUser.avatar,
-            },
-            replyingTo?._id,
-            "image",
-            url,
-          );
-          setReplyingTo(null);
-        } catch (err) {
-          console.error("Image upload failed", err);
-        } finally {
-          setIsSending(false);
-        }
+      if (!result.canceled && result.assets?.[0]) {
+        // Show preview — don't upload yet
+        setPendingImage({ uri: result.assets[0].uri });
       }
     } catch (err) {
       console.error("Image picker error:", err);
+    }
+  };
+
+  const handleSendImage = async () => {
+    if (!pendingImage || !currentUser) return;
+    setIsUploadingMedia(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("No token");
+      const url = await uploadToImageKit(pendingImage.uri, "image", token);
+      sendMessage(chatId, "📸 Image", { _id: currentUser._id, name: currentUser.name, email: currentUser.email, avatar: currentUser.avatar }, replyingTo?._id, "image", url);
+      setReplyingTo(null);
+      setPendingImage(null);
+    } catch (err) {
+      console.error("Image upload failed", err);
+    } finally {
+      setIsUploadingMedia(false);
     }
   };
 
@@ -217,39 +212,33 @@ const ChatDetailScreen = () => {
   };
 
   const stopRecording = async () => {
-    if (!currentUser) return;
     try {
       setIsRecording(false);
       await audioRecorder.stop();
       const uri = audioRecorder.uri;
       if (uri) {
-        setIsSending(true);
-        try {
-          const token = await getToken();
-          if (!token) throw new Error("No token");
-          const url = await uploadToImageKit(uri, "voice", token);
-          sendMessage(
-            chatId,
-            "🎤 Voice Message",
-            {
-              _id: currentUser._id,
-              name: currentUser.name,
-              email: currentUser.email,
-              avatar: currentUser.avatar,
-            },
-            replyingTo?._id,
-            "voice",
-            url,
-          );
-          setReplyingTo(null);
-        } catch (err) {
-          console.error("Voice upload failed", err);
-        } finally {
-          setIsSending(false);
-        }
+        // Show preview — don't upload yet
+        setPendingVoice(uri);
       }
     } catch (err) {
       console.error("Stop recording failed", err);
+    }
+  };
+
+  const handleSendVoice = async () => {
+    if (!pendingVoice || !currentUser) return;
+    setIsUploadingMedia(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("No token");
+      const url = await uploadToImageKit(pendingVoice, "voice", token);
+      sendMessage(chatId, "🎤 Voice Message", { _id: currentUser._id, name: currentUser.name, email: currentUser.email, avatar: currentUser.avatar }, replyingTo?._id, "voice", url);
+      setReplyingTo(null);
+      setPendingVoice(null);
+    } catch (err) {
+      console.error("Voice upload failed", err);
+    } finally {
+      setIsUploadingMedia(false);
     }
   };
 
@@ -387,7 +376,37 @@ const ChatDetailScreen = () => {
             />
           )}
 
-          {/* Input bar */}
+          {/* ── Image Preview Bar ── */}
+          {pendingImage && (
+            <View style={styles.previewContainer}>
+              <Image source={{ uri: pendingImage.uri }} style={styles.previewImage} contentFit="cover" />
+              <View style={styles.previewActions}>
+                <Pressable onPress={() => setPendingImage(null)} style={[styles.previewBtn, { backgroundColor: colors.surface.light }]}>
+                  <Ionicons name="close" size={20} color={colors.foreground} />
+                </Pressable>
+                <Pressable onPress={handleSendImage} disabled={isUploadingMedia} style={[styles.previewBtn, { backgroundColor: colors.primary.default }]}>
+                  {isUploadingMedia ? <ActivityIndicator size="small" color={colors.surface.dark} /> : <Ionicons name="send" size={18} color={colors.surface.dark} />}
+                </Pressable>
+              </View>
+            </View>
+          )}
+
+          {/* ── Voice Preview Bar ── */}
+          {pendingVoice && !pendingImage && (
+            <View style={styles.voicePreviewContainer}>
+              <Ionicons name="mic" size={20} color={colors.primary.default} />
+              <Text style={[styles.textInput, { flex: 1, marginBottom: 0, paddingVertical: 8, color: colors.foreground }]}>Voice message ready</Text>
+              <Pressable onPress={() => setPendingVoice(null)} style={[styles.previewBtn, { backgroundColor: colors.surface.light }]}>
+                <Ionicons name="trash" size={18} color="#EF4444" />
+              </Pressable>
+              <Pressable onPress={handleSendVoice} disabled={isUploadingMedia} style={[styles.previewBtn, { backgroundColor: colors.primary.default }]}>
+                {isUploadingMedia ? <ActivityIndicator size="small" color={colors.surface.dark} /> : <Ionicons name="send" size={18} color={colors.surface.dark} />}
+              </Pressable>
+            </View>
+          )}
+
+          {/* ── Normal Input bar ── */}
+          {!pendingImage && !pendingVoice && (
           <View style={styles.inputContainer}>
             <View style={styles.inputWrapper}>
               {/* Media Attach Button */}
@@ -407,23 +426,9 @@ const ChatDetailScreen = () => {
                 </Pressable>
               )}
 
-              {/* Text Input / Recording Indicator */}
               {isRecording ? (
-                <View
-                  style={[
-                    styles.textInput,
-                    { justifyContent: "center", marginBottom: 0 },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: "red",
-                      fontWeight: "bold",
-                      paddingVertical: 8,
-                    }}
-                  >
-                    Recording audio... 🎤
-                  </Text>
+                <View style={[styles.textInput, { justifyContent: "center", marginBottom: 0 }]}>
+                  <Text style={{ color: "red", fontWeight: "bold", paddingVertical: 8 }}>Recording audio... 🎤</Text>
                 </View>
               ) : (
                 <TextInput
@@ -438,57 +443,26 @@ const ChatDetailScreen = () => {
                 />
               )}
 
-              {/* Mic / Send Button */}
               {messageText.trim().length > 0 ? (
                 <Pressable
-                  style={({ pressed }) => [
-                    styles.sendButton,
-                    isSending && styles.sendButtonDisabled,
-                    pressed && styles.pressedState,
-                  ]}
+                  style={({ pressed }) => [styles.sendButton, isSending && styles.sendButtonDisabled, pressed && styles.pressedState]}
                   onPress={handleSend}
                   disabled={isSending}
                 >
-                  {isSending ? (
-                    <ActivityIndicator
-                      size="small"
-                      color={colors.surface.dark}
-                    />
-                  ) : (
-                    <Ionicons
-                      name="send"
-                      size={18}
-                      color={colors.surface.dark}
-                    />
-                  )}
+                  {isSending ? <ActivityIndicator size="small" color={colors.surface.dark} /> : <Ionicons name="send" size={18} color={colors.surface.dark} />}
                 </Pressable>
               ) : (
                 <Pressable
-                  style={({ pressed }) => [
-                    styles.sendButton,
-                    isSending && styles.sendButtonDisabled,
-                    pressed && styles.pressedState,
-                    isRecording && { backgroundColor: "red" },
-                  ]}
+                  style={({ pressed }) => [styles.sendButton, isSending && styles.sendButtonDisabled, pressed && styles.pressedState, isRecording && { backgroundColor: "red" }]}
                   onPress={isRecording ? stopRecording : startRecording}
                   disabled={isSending}
                 >
-                  {isSending ? (
-                    <ActivityIndicator
-                      size="small"
-                      color={colors.surface.dark}
-                    />
-                  ) : (
-                    <Ionicons
-                      name={isRecording ? "stop" : "mic"}
-                      size={18}
-                      color={colors.surface.dark}
-                    />
-                  )}
+                  {isSending ? <ActivityIndicator size="small" color={colors.surface.dark} /> : <Ionicons name={isRecording ? "stop" : "mic"} size={18} color={colors.surface.dark} />}
                 </Pressable>
               )}
             </View>
           </View>
+          )}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -583,6 +557,43 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       backgroundColor: colors.primary.default,
     },
     sendButtonDisabled: { opacity: 0.4 },
+    previewContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      padding: 12,
+      backgroundColor: colors.surface.card,
+      borderTopWidth: 1,
+      borderTopColor: colors.surface.light,
+    },
+    previewImage: {
+      width: 64,
+      height: 64,
+      borderRadius: 10,
+    },
+    previewActions: {
+      flex: 1,
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 8,
+    },
+    previewBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    voicePreviewContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.surface.card,
+      borderTopWidth: 1,
+      borderTopColor: colors.surface.light,
+    },
   });
 
 export default ChatDetailScreen;

@@ -12,7 +12,7 @@
 
 import { useEffect, useRef } from "react";
 import { AppState, Platform } from "react-native";
-import messaging from "@react-native-firebase/messaging";
+import { getMessaging, onMessage } from "@react-native-firebase/messaging";
 import { useCallStore, __registerCallKeepEndCall } from "@/lib/callStore";
 import { useSocketStore } from "@/lib/socket";
 
@@ -254,7 +254,7 @@ export function useCallKeep() {
   useEffect(() => {
     if (Platform.OS !== "android" || !RNCallKeep) return;
 
-    const unsubscribe = messaging().onMessage(async (remoteMessage) => {
+    const unsubscribe = onMessage(getMessaging(), async (remoteMessage) => {
       const data = remoteMessage.data;
       if (data?.type !== "incoming-call") return;
 
