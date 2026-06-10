@@ -77,18 +77,12 @@
         {
           "icon": "./assets/images/icon.png",
           "color": "#F4A261",
-          "defaultChannel": "messages",
           "sounds": [],
           "channels": [
             {
               "name": "messages",
               "importance": "max",
-              "vibrationPattern": [
-                0,
-                250,
-                250,
-                250
-              ],
+              "vibrationPattern": [0, 250, 250, 250],
               "lightColor": "#F4A261",
               "sound": "default",
               "showBadge": true
