@@ -4,7 +4,7 @@ import {
   MediaStream,
   RTCPeerConnection,
   RTCSessionDescription,
-  mediaDevices
+  mediaDevices,
 } from "react-native-webrtc";
 import { create } from "zustand";
 import { API_URL } from "../constants/Config";
@@ -78,6 +78,10 @@ export interface CallState {
 const fetchIceServers = async () => {
   try {
     const response = await axios.get(`${API_URL}/api/turn/credentials`);
+    console.log(
+      "[WebRTC] TURN credentials from backend:",
+      JSON.stringify(response.data, null, 2),
+    );
     return { iceServers: response.data };
   } catch {
     return { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
@@ -88,7 +92,9 @@ const fetchIceServers = async () => {
 // Helper: create a RTCPeerConnection with full audio debug logging
 // ─────────────────────────────────────────────────────────────────────────────
 function createPC(iceServers: any[]): RTCPeerConnection {
-  const pc = new RTCPeerConnection({ iceServers } as any);
+  const pc = new RTCPeerConnection({
+    iceServers,
+  });
 
   (pc as any).onconnectionstatechange = () => {
     console.log("[WebRTC] connectionState:", (pc as any).connectionState);
@@ -172,7 +178,10 @@ function wirePC(
   // ICE candidate forwarding
   (pc as any).onicecandidate = (event: any) => {
     if (event.candidate) {
-      console.log(`[WebRTC][${label}] Sending ICE candidate`);
+      console.log(
+        `[WebRTC][${label}] [ICE Candidate]`,
+        event.candidate.candidate,
+      );
       socket.emit("ice-candidate", {
         targetUserId,
         candidate: event.candidate,
