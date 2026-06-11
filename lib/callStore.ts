@@ -2,10 +2,9 @@ import axios from "axios";
 import InCallManager from "react-native-incall-manager";
 import {
   MediaStream,
-  RTCIceCandidate,
   RTCPeerConnection,
   RTCSessionDescription,
-  mediaDevices,
+  mediaDevices
 } from "react-native-webrtc";
 import { create } from "zustand";
 import { API_URL } from "../constants/Config";
@@ -21,7 +20,6 @@ export function __registerCallKeepEndCall(fn: () => void) {
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 export interface CallState {
-  /** Core call status state machine */
   callStatus: "idle" | "outgoing" | "incoming" | "active";
   callType: "audio" | "video" | null;
   remoteUserId: string | null;
@@ -39,11 +37,6 @@ export interface CallState {
   _listenersInitialized: boolean;
   _callTimeoutId: ReturnType<typeof setTimeout> | null;
   _durationTimerId: ReturnType<typeof setInterval> | null;
-  /**
-   * Set when the app is opened from a killed/background state via a push
-   * notification tap. Holds caller info while we wait for the socket to
-   * reconnect and deliver the SDP offer.
-   */
   pendingPushCallData: {
     callerId: string;
     callerName: string;
@@ -53,9 +46,12 @@ export interface CallState {
     _autoAccept?: boolean;
   } | null;
 
-  // ── Actions ────────────────────────────────────────────────────────────────
   initCallListeners: () => void;
-  startCall: (targetUserId: string, name: string, avatar: string) => Promise<void>;
+  startCall: (
+    targetUserId: string,
+    name: string,
+    avatar: string,
+  ) => Promise<void>;
   acceptCall: () => Promise<void>;
   rejectCall: () => void;
   endCall: () => void;
@@ -69,7 +65,6 @@ export interface CallState {
     callId?: string;
   }) => void;
   acceptCallFromPush: () => void;
-  // Internal
   _handleIncomingCall: (data: any) => void;
   _handleCallAnswer: (answer: any) => Promise<void>;
   _handleRemoteIceCandidate: (candidate: any) => Promise<void>;
@@ -88,6 +83,134 @@ const fetchIceServers = async () => {
     return { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: create a RTCPeerConnection with full audio debug logging
+// ─────────────────────────────────────────────────────────────────────────────
+function createPC(iceServers: any[]): RTCPeerConnection {
+  const pc = new RTCPeerConnection({ iceServers } as any);
+
+  (pc as any).onconnectionstatechange = () => {
+    console.log("[WebRTC] connectionState:", (pc as any).connectionState);
+  };
+  (pc as any).oniceconnectionstatechange = () => {
+    console.log("[WebRTC] iceConnectionState:", (pc as any).iceConnectionState);
+  };
+  (pc as any).onsignalingstatechange = () => {
+    console.log("[WebRTC] signalingState:", (pc as any).signalingState);
+  };
+
+  return pc;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: get local audio stream with InCallManager activated first
+// ─────────────────────────────────────────────────────────────────────────────
+async function getLocalAudioStream(): Promise<MediaStream> {
+  // CRITICAL: Start InCallManager BEFORE getUserMedia
+  try {
+    InCallManager.start({ media: "audio" });
+    InCallManager.setSpeakerphoneOn(true);
+    InCallManager.setKeepScreenOn(true);
+    console.log("[WebRTC] InCallManager started & forced speakerphone");
+  } catch (e) {
+    console.warn("[WebRTC] InCallManager.start failed:", e);
+  }
+
+  const stream = await mediaDevices.getUserMedia({
+    // audio: ({
+    //   echoCancellation: true,
+    //   noiseSuppression: true,
+    //   autoGainControl: true,
+    // } as any),
+    audio: true,
+    video: false,
+  });
+
+  const audioTracks = stream.getAudioTracks();
+  console.log("[WebRTC] Local audio tracks:", audioTracks.length);
+
+  audioTracks.forEach((track: any) => {
+    // CRITICAL ANDROID FIX
+    track.enabled = true;
+
+    console.log("TRACK INFO");
+    console.log("enabled =", track.enabled);
+    console.log("muted =", track.muted);
+    console.log("readyState =", track.readyState);
+  });
+
+  return stream;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: attach tracks to PC and wire ontrack for the remote stream
+// ─────────────────────────────────────────────────────────────────────────────
+function wirePC(
+  pc: RTCPeerConnection,
+  localStream: MediaStream,
+  onRemoteStream: (stream: MediaStream) => void,
+  targetUserId: string,
+  socket: any,
+  label: string,
+) {
+  // ONLY addTrack, no transceivers
+  const audioTracks = localStream.getAudioTracks();
+  console.log("[Mobile] audio tracks:", audioTracks.length);
+
+  audioTracks.forEach((track: any) => {
+    console.log(
+      "[Mobile] adding track",
+      track.id,
+      track.enabled,
+      track.muted,
+      track.readyState,
+    );
+    (pc as any).addTrack(track, localStream);
+  });
+
+  // ICE candidate forwarding
+  (pc as any).onicecandidate = (event: any) => {
+    if (event.candidate) {
+      console.log(`[WebRTC][${label}] Sending ICE candidate`);
+      socket.emit("ice-candidate", {
+        targetUserId,
+        candidate: event.candidate,
+      });
+    } else {
+      console.log(`[WebRTC][${label}] ICE gathering complete`);
+    }
+  };
+
+  // Remote stream handling
+  (pc as any).ontrack = (event: any) => {
+    console.log("[Mobile] ontrack fired");
+
+    if (event.track) {
+      console.log(event.track.kind);
+      console.log(event.track.enabled);
+      console.log(event.track.muted);
+      console.log(event.track.readyState);
+    }
+
+    console.log("streams =", event.streams?.length ?? 0);
+
+    if (event.streams && event.streams[0]) {
+      const remoteAudioTracks = event.streams[0].getAudioTracks();
+      console.log("remote audio tracks =", remoteAudioTracks.length);
+      onRemoteStream(event.streams[0]);
+    } else if (event.track) {
+      // Fallback for older react-native-webrtc versions that don't send streams array
+      console.log("[Mobile] No streams array, building manual MediaStream");
+      const remoteStream = new MediaStream([event.track]);
+      console.log(
+        "remote audio tracks (manual) =",
+        remoteStream.getAudioTracks().length,
+      );
+      onRemoteStream(remoteStream);
+    }
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Store
@@ -113,13 +236,16 @@ export const useCallStore = create<CallState>((set, get) => ({
   pendingPushCallData: null,
 
   // ────────────────────────────────────────────────────────────────────────
-  // initCallListeners — attach socket event handlers (idempotent)
+  // initCallListeners — idempotent socket event setup
   // ────────────────────────────────────────────────────────────────────────
   initCallListeners: () => {
     const socket = useSocketStore.getState().socket;
-    if (!socket) return;
+    if (!socket) {
+      console.warn("[CallStore] initCallListeners: no socket");
+      return;
+    }
 
-    // Always remove before re-adding to prevent duplicates
+    // Remove old listeners first (idempotent)
     socket.off("incoming-call");
     socket.off("call-answer-forwarded");
     socket.off("call-connected");
@@ -127,21 +253,19 @@ export const useCallStore = create<CallState>((set, get) => ({
     socket.off("call-ended");
     socket.off("call-rejected");
 
-    socket.on("incoming-call", (data) => get()._handleIncomingCall(data));
-    socket.on("call-answer-forwarded", ({ answer }) => get()._handleCallAnswer(answer));
+    socket.on("incoming-call", (data: any) => get()._handleIncomingCall(data));
+    socket.on("call-answer-forwarded", ({ answer }: any) =>
+      get()._handleCallAnswer(answer),
+    );
 
-    // call-connected: emitted by backend to both sides when receiver accepts.
-    // Acts as a FALLBACK for the caller to transition from outgoing → active
-    // in case the SDP exchange doesn't trigger the state change.
     socket.on("call-connected", () => {
       console.log("[CallStore] call-connected received");
-      if (get().callStatus === "outgoing") {
-        console.log("[CallStore] Transitioning to active via call-connected fallback");
-        get()._transitionToActive();
-      }
+      if (get().callStatus === "outgoing") get()._transitionToActive();
     });
 
-    socket.on("ice-candidate-forwarded", ({ candidate }) => get()._handleRemoteIceCandidate(candidate));
+    socket.on("ice-candidate-forwarded", ({ candidate }: any) =>
+      get()._handleRemoteIceCandidate(candidate),
+    );
     socket.on("call-ended", () => {
       console.log("[CallStore] Remote ended the call");
       get()._cleanup();
@@ -153,17 +277,21 @@ export const useCallStore = create<CallState>((set, get) => ({
 
     set({ _listenersInitialized: true });
 
-    // ── Check for missed/ongoing calls when socket connects ───────────
+    // Recover missed offer if woken from killed state
     socket.emit("fetch-ongoing-call");
     console.log("[CallStore] Requested fetch-ongoing-call");
   },
 
   // ────────────────────────────────────────────────────────────────────────
-  // setIncomingCallFromPush — called when the app opens from a push tap
-  // (killed / background state). Stores caller info for the IncomingCallModal.
-  // The SDP offer will arrive once the socket reconnects.
+  // setIncomingCallFromPush
   // ────────────────────────────────────────────────────────────────────────
-  setIncomingCallFromPush: ({ callerId, callerName, callerAvatar, callType, callId }) => {
+  setIncomingCallFromPush: ({
+    callerId,
+    callerName,
+    callerAvatar,
+    callType,
+    callId,
+  }) => {
     set({
       callStatus: "incoming",
       remoteUserId: callerId,
@@ -182,7 +310,7 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   // ────────────────────────────────────────────────────────────────────────
-  // acceptCallFromPush — tapped Accept on OS notification (background/killed)
+  // acceptCallFromPush
   // ────────────────────────────────────────────────────────────────────────
   acceptCallFromPush: () => {
     const { callStatus, incomingOffer } = get();
@@ -199,65 +327,49 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   // ────────────────────────────────────────────────────────────────────────
-  // startCall — initiate an outgoing call
+  // startCall — outgoing call (CALLER)
   // ────────────────────────────────────────────────────────────────────────
   startCall: async (targetUserId, name, avatar) => {
     const socket = useSocketStore.getState().socket;
     if (!socket) return;
 
-    // Prevent starting a new call if already in one
     if (get().callStatus !== "idle") {
       console.warn("[CallStore] startCall called while not idle — ignoring");
       return;
     }
 
     try {
-      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+      // 1. Get local audio (InCallManager started inside)
+      const stream = await getLocalAudioStream();
+
+      // 2. Create peer connection
       const iceConfig = await fetchIceServers();
-      const pc = new RTCPeerConnection({ iceServers: iceConfig.iceServers } as any);
+      const pc = createPC(iceConfig.iceServers);
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      // 3. Wire tracks + ontrack BEFORE createOffer
+      wirePC(
+        pc,
+        stream,
+        (remoteStream) => set({ remoteStream }),
+        targetUserId,
+        socket,
+        "CALLER",
+      );
 
-      (pc as any).onicecandidate = (event: any) => {
-        if (event.candidate) {
-          socket.emit("ice-candidate", { targetUserId, candidate: event.candidate });
-        }
-      };
-
-      (pc as any).ontrack = (event: any) => {
-        if (event.streams?.[0]) set({ remoteStream: event.streams[0] });
-      };
-      (pc as any).onaddstream = (event: any) => {
-        if (event.stream) set({ remoteStream: event.stream });
-      };
-
-      // ICE state change — secondary path to catch "active" if the
-      // call-answer-forwarded event somehow fires before ICE connects.
-      // Primary transition happens in _handleCallAnswer.
+      // 4. ICE state → auto transition fallback (primary = _handleCallAnswer)
       (pc as any).oniceconnectionstatechange = () => {
         const iceState = (pc as any).iceConnectionState as string;
         console.log("[CallStore] Caller ICE state:", iceState);
-
-        if (iceState === "connected" || iceState === "completed") {
-          // Only transition if we haven't already (answer may have done it)
-          if (get().callStatus === "outgoing") {
-            console.log("[CallStore] ICE connected — transitioning to active (fallback)");
-            get()._transitionToActive();
-          }
+        if (
+          (iceState === "connected" || iceState === "completed") &&
+          get().callStatus === "outgoing"
+        ) {
+          console.log(
+            "[CallStore] ICE connected — transitioning to active (fallback)",
+          );
+          get()._transitionToActive();
         } else if (iceState === "failed" || iceState === "disconnected") {
           console.log("[CallStore] ICE failed/disconnected — cleaning up");
-          get()._cleanup();
-        }
-      };
-
-      (pc as any).onconnectionstatechange = () => {
-        const connState = (pc as any).connectionState as string;
-        console.log("[CallStore] Caller connection state:", connState);
-        if (connState === "connected") {
-          if (get().callStatus === "outgoing") {
-            get()._transitionToActive();
-          }
-        } else if (connState === "failed" || connState === "closed") {
           get()._cleanup();
         }
       };
@@ -272,12 +384,14 @@ export const useCallStore = create<CallState>((set, get) => ({
         callStatus: "outgoing",
       });
 
+      // 5. Create and send offer
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      console.log("[Mobile] CALLER offer SDP:\n", (offer as any).sdp);
 
       socket.emit("call-offer", { targetUserId, offer, callType: "audio" });
 
-      // 60-second no-answer timeout
+      // 60s no-answer timeout
       const timeoutId = setTimeout(() => {
         if (get().callStatus === "outgoing") {
           console.log("[CallStore] Outgoing call timed out");
@@ -285,7 +399,6 @@ export const useCallStore = create<CallState>((set, get) => ({
           get()._cleanup();
         }
       }, 60_000);
-
       set({ _callTimeoutId: timeoutId });
     } catch (e) {
       console.error("[CallStore] startCall failed:", e);
@@ -294,68 +407,71 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   // ────────────────────────────────────────────────────────────────────────
-  // acceptCall — called by receiver to accept an incoming call
+  // acceptCall — RECEIVER accepts incoming call
   // ────────────────────────────────────────────────────────────────────────
   acceptCall: async () => {
     const socket = useSocketStore.getState().socket;
     const { remoteUserId, incomingOffer, pendingCandidates, callId } = get();
     if (!socket || !remoteUserId) return;
 
-    // Clear ring timeout
     const existingTimeout = get()._callTimeoutId;
     if (existingTimeout) clearTimeout(existingTimeout);
 
     try {
-      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+      // 1. Get local audio (InCallManager started inside)
+      const stream = await getLocalAudioStream();
+
+      // 2. Create peer connection
       const iceConfig = await fetchIceServers();
-      const pc = new RTCPeerConnection({ iceServers: iceConfig.iceServers } as any);
+      const pc = createPC(iceConfig.iceServers);
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-      (pc as any).onicecandidate = (event: any) => {
-        if (event.candidate) {
-          socket.emit("ice-candidate", { targetUserId: remoteUserId, candidate: event.candidate });
-        }
-      };
-
-      (pc as any).ontrack = (event: any) => {
-        if (event.streams?.[0]) set({ remoteStream: event.streams[0] });
-      };
-      (pc as any).onaddstream = (event: any) => {
-        if (event.stream) set({ remoteStream: event.stream });
-      };
+      // 3. Wire tracks + ontrack BEFORE setRemoteDescription
+      wirePC(
+        pc,
+        stream,
+        (remoteStream) => set({ remoteStream }),
+        remoteUserId,
+        socket,
+        "RECEIVER",
+      );
 
       (pc as any).oniceconnectionstatechange = () => {
         const iceState = (pc as any).iceConnectionState as string;
         console.log("[CallStore] Receiver ICE state:", iceState);
-        if (iceState === "failed" || iceState === "disconnected") {
+        if (iceState === "failed" || iceState === "disconnected")
           get()._cleanup();
-        }
       };
 
       set({ localStream: stream, peerConnection: pc });
 
+      // 4. Set remote description (offer)
       if (incomingOffer) {
         await pc.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+        console.log("[CallStore] Set remote description (offer)");
       }
 
+      // 5. Create and send answer
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      console.log("[Mobile] RECEIVER answer SDP:\n", (answer as any).sdp);
 
-      socket.emit("call-answer", { targetUserId: remoteUserId, answer, callId });
+      socket.emit("call-answer", {
+        targetUserId: remoteUserId,
+        answer,
+        callId,
+      });
 
-      // Flush queued ICE candidates
+      // 6. Flush queued ICE candidates BEFORE transitioning to active
       for (const candidate of pendingCandidates) {
         try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          await pc.addIceCandidate(candidate);
         } catch (e) {
           console.error("[CallStore] Failed to add queued ICE candidate:", e);
         }
       }
       set({ pendingCandidates: [], _callTimeoutId: null });
 
-      // Receiver transitions to active immediately after sending answer —
-      // don't wait for ICE connected because the peer state fires on the other side
+      // 7. Transition to active — receiver can transition immediately
       get()._transitionToActive();
     } catch (e) {
       console.error("[CallStore] acceptCall failed:", e);
@@ -364,27 +480,28 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   // ────────────────────────────────────────────────────────────────────────
-  // _transitionToActive — shared logic to move from any ringing state → active
+  // _transitionToActive
   // ────────────────────────────────────────────────────────────────────────
   _transitionToActive: () => {
     const { callStatus, _durationTimerId, _callTimeoutId } = get();
 
-    // Guard: only transition from a ringing state
     if (callStatus === "active") {
       console.log("[CallStore] Already active — skipping duplicate transition");
       return;
     }
 
-    // Stop any previous timer
     if (_durationTimerId) clearInterval(_durationTimerId);
     if (_callTimeoutId) clearTimeout(_callTimeoutId);
 
-    // Start call audio
+    // InCallManager was already started in getLocalAudioStream.
+    // Here we just ensure speakerphone is in the correct state.
     try {
-      InCallManager.start({ media: "audio" });
       InCallManager.setKeepScreenOn(true);
+      // Route to earpiece by default for audio calls (user can toggle speaker)
+      InCallManager.setSpeakerphoneOn(true);
+      console.log("[CallStore] InCallManager audio routing set to earpiece");
     } catch (e) {
-      console.warn("[CallStore] InCallManager.start failed:", e);
+      console.warn("[CallStore] InCallManager routing failed:", e);
     }
 
     const timerId = setInterval(() => {
@@ -407,9 +524,8 @@ export const useCallStore = create<CallState>((set, get) => ({
   rejectCall: () => {
     const socket = useSocketStore.getState().socket;
     const { remoteUserId, callId } = get();
-    if (socket && remoteUserId) {
+    if (socket && remoteUserId)
       socket.emit("call-reject", { targetUserId: remoteUserId, callId });
-    }
     _endCallViaCallKeep?.();
     get()._cleanup();
   },
@@ -420,9 +536,8 @@ export const useCallStore = create<CallState>((set, get) => ({
   endCall: () => {
     const socket = useSocketStore.getState().socket;
     const { remoteUserId, callId } = get();
-    if (socket && remoteUserId) {
+    if (socket && remoteUserId)
       socket.emit("call-end", { targetUserId: remoteUserId, callId });
-    }
     _endCallViaCallKeep?.();
     get()._cleanup();
   },
@@ -433,8 +548,11 @@ export const useCallStore = create<CallState>((set, get) => ({
   toggleMute: () => {
     const { localStream, isMuted } = get();
     if (localStream) {
-      localStream.getAudioTracks().forEach((track) => {
-        track.enabled = isMuted; // if muted → enable (unmute); else disable (mute)
+      localStream.getAudioTracks().forEach((track: any) => {
+        track.enabled = isMuted; // if muted → enable; else disable
+        console.log(
+          `[CallStore] Audio track ${track.id} enabled=${track.enabled}`,
+        );
       });
     }
     set({ isMuted: !isMuted });
@@ -447,6 +565,7 @@ export const useCallStore = create<CallState>((set, get) => ({
     const next = !get().isSpeakerOn;
     try {
       InCallManager.setSpeakerphoneOn(next);
+      console.log("[CallStore] Speaker:", next ? "ON" : "OFF");
     } catch (e) {
       console.warn("[CallStore] setSpeakerphoneOn failed:", e);
     }
@@ -460,15 +579,13 @@ export const useCallStore = create<CallState>((set, get) => ({
     const { callStatus, pendingPushCallData } = get();
 
     if (callStatus === "incoming" && pendingPushCallData) {
-      // App was opened from a push tap. Socket reconnected and delivered the offer.
-      // Merge the offer in without resetting caller info.
-      console.log("[CallStore] Push-tap recovery: merging offer into existing incoming state");
+      console.log(
+        "[CallStore] Push-tap recovery: merging offer into existing incoming state",
+      );
       set({
         incomingOffer: data.offer,
         callId: data.callId || get().callId,
       });
-
-      // If the user already tapped Accept on the OS notification, auto-accept now
       if (pendingPushCallData._autoAccept) {
         set({ pendingPushCallData: null });
         get().acceptCall();
@@ -477,15 +594,18 @@ export const useCallStore = create<CallState>((set, get) => ({
     }
 
     if (callStatus !== "idle") {
-      console.log("[CallStore] Ignoring incoming-call — already in a call:", callStatus);
+      console.log(
+        "[CallStore] Ignoring incoming-call — already in a call:",
+        callStatus,
+      );
       return;
     }
 
     console.log("[CallStore] Incoming call from:", data.callerName);
 
-    // 60-second missed-call timeout
     const existingTimeout = get()._callTimeoutId;
     if (existingTimeout) clearTimeout(existingTimeout);
+
     const timeoutId = setTimeout(() => {
       if (get().callStatus === "incoming") {
         console.log("[CallStore] Incoming call timed out (missed)");
@@ -508,12 +628,7 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   // ────────────────────────────────────────────────────────────────────────
-  // _handleCallAnswer — called on the CALLER side when receiver accepts
-  //
-  // KEY FIX: Transition to "active" immediately here — do NOT wait for
-  // oniceconnectionstatechange. On Android/react-native-webrtc, the ICE
-  // "connected" event can fire very late or be skipped entirely with TURN.
-  // The answer SDP being set means the call IS accepted.
+  // _handleCallAnswer — CALLER receives answer from receiver
   // ────────────────────────────────────────────────────────────────────────
   _handleCallAnswer: async (answer) => {
     const { peerConnection, pendingCandidates, callStatus } = get();
@@ -522,26 +637,32 @@ export const useCallStore = create<CallState>((set, get) => ({
       return;
     }
     if (callStatus !== "outgoing") {
-      console.warn("[CallStore] _handleCallAnswer: unexpected status:", callStatus);
+      console.warn(
+        "[CallStore] _handleCallAnswer: unexpected status:",
+        callStatus,
+      );
       return;
     }
 
-    console.log("[CallStore] Received call answer — setting remote description");
-
+    console.log("[CallStore] Setting remote description (answer)...");
     try {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+      await peerConnection.setRemoteDescription(
+        // new RTCSessionDescription(answer),
+        answer,
+      );
+      console.log("[CallStore] Remote description set successfully");
 
-      // Flush queued ICE candidates that arrived before the remote description
+      // Flush queued ICE candidates
       for (const candidate of pendingCandidates) {
         try {
-          await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+          await peerConnection.addIceCandidate(candidate);
         } catch (e) {
           console.error("[CallStore] Failed ICE candidate flush:", e);
         }
       }
       set({ pendingCandidates: [] });
 
-      // ✅ CRITICAL: Transition to active NOW — don't wait for ICE state
+      // Transition to active — don't wait for ICE state
       get()._transitionToActive();
     } catch (e) {
       console.error("[CallStore] _handleCallAnswer failed:", e);
@@ -549,13 +670,13 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   // ────────────────────────────────────────────────────────────────────────
-  // _handleRemoteIceCandidate — queue or apply remote ICE candidates
+  // _handleRemoteIceCandidate
   // ────────────────────────────────────────────────────────────────────────
   _handleRemoteIceCandidate: async (candidate) => {
     const { peerConnection, pendingCandidates } = get();
     if (peerConnection && peerConnection.remoteDescription) {
       try {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        await peerConnection.addIceCandidate(candidate);
       } catch (e) {
         console.error("[CallStore] addIceCandidate failed:", e);
       }
@@ -565,16 +686,21 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   // ────────────────────────────────────────────────────────────────────────
-  // _cleanup — full reset: stop media, close PC, reset all state
+  // _cleanup
   // ────────────────────────────────────────────────────────────────────────
   _cleanup: () => {
-    const { localStream, peerConnection, _callTimeoutId, _durationTimerId } = get();
+    const { localStream, peerConnection, _callTimeoutId, _durationTimerId } =
+      get();
 
     console.log("[CallStore] Cleaning up call...");
 
     if (localStream) {
-      localStream.getTracks().forEach((track) => {
-        try { track.stop(); } catch { /* already stopped */ }
+      localStream.getAudioTracks().forEach((track: any) => {
+        try {
+          track.stop();
+        } catch {
+          /* already stopped */
+        }
       });
     }
 
@@ -585,14 +711,20 @@ export const useCallStore = create<CallState>((set, get) => ({
         (peerConnection as any).onaddstream = null;
         (peerConnection as any).oniceconnectionstatechange = null;
         (peerConnection as any).onconnectionstatechange = null;
+        (peerConnection as any).onsignalingstatechange = null;
         peerConnection.close();
-      } catch { /* already closed */ }
+      } catch {
+        /* already closed */
+      }
     }
 
     try {
       InCallManager.stop();
       InCallManager.setKeepScreenOn(false);
-    } catch { /* ignore */ }
+      console.log("[CallStore] InCallManager stopped");
+    } catch {
+      /* ignore */
+    }
 
     if (_callTimeoutId) clearTimeout(_callTimeoutId);
     if (_durationTimerId) clearInterval(_durationTimerId);
@@ -612,6 +744,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       callId: null,
       incomingOffer: null,
       pendingCandidates: [],
+      _listenersInitialized: false,
       _callTimeoutId: null,
       _durationTimerId: null,
       pendingPushCallData: null,

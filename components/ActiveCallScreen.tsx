@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { View, Text, StyleSheet, Pressable, Dimensions } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -31,6 +31,20 @@ const ActiveCallScreen = () => {
   } = useCallStore();
 
   const { colors } = useTheme();
+
+  // ── Debug: log remote stream details whenever it changes ─────────────
+  useEffect(() => {
+    if (remoteStream) {
+      const tracks = remoteStream.getAudioTracks();
+      console.log("[ActiveCallScreen] remoteStream updated:", remoteStream.id);
+      console.log("  audio tracks:", tracks.length);
+      (tracks as any[]).forEach((t) =>
+        console.log(`  track id=${t.id} enabled=${t.enabled} muted=${t.muted} readyState=${t.readyState}`)
+      );
+    } else {
+      console.log("[ActiveCallScreen] remoteStream is null");
+    }
+  }, [remoteStream]);
 
   if (callStatus !== "active") return null;
 
