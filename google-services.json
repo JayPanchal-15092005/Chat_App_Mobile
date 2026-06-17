@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "498460488319",
+    "project_id": "cha-app-3f4c7",
+    "storage_bucket": "cha-app-3f4c7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:498460488319:android:6083913496e0027199454a",
+        "android_client_info": {
+          "package_name": "com.ketan_panchal.chatapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "498460488319-mgc6cb88g6lnphgujqreu1oilvri83v8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ketan_panchal.chatapp",
+            "certificate_hash": "53a9dea26dab7ac7d413df524fea952380418ad0"
+          }
+        },
+        {
+          "client_id": "498460488319-9op732p3lnk432judqtcehp2eb7m14hn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCAKhQ0ejsD5jVGFLltgFIXrhlD0LgdkOk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "498460488319-9op732p3lnk432judqtcehp2eb7m14hn.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
