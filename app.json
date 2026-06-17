@@ -34,7 +34,9 @@
         "android.permission.WAKE_LOCK",
         "android.permission.VIBRATE",
         "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.BLUETOOTH_CONNECT"
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BIND_TELECOM_CONNECTION_SERVICE",
+        "android.permission.READ_PHONE_NUMBERS"
       ]
     },
     "web": {
@@ -126,14 +128,8 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "2d0589c7-1356-48a9-962d-eca5ff8d3b1b"
+        "projectId": "b12fb72e-6f8c-4e16-93a3-cad2050ef949"
       }
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/2d0589c7-1356-48a9-962d-eca5ff8d3b1b"
     }
   }
 }
