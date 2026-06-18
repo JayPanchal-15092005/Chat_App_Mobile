@@ -1,5 +1,6 @@
 import { useTheme } from "@/hooks/useTheme";
 import { useCallStore } from "@/lib/callStore";
+import { getAvatarUrl } from "@/lib/utils";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import React, { useEffect } from "react";
@@ -96,26 +97,11 @@ const IncomingCallModal = () => {
               { borderColor: colors.primary.default },
             ]}
           />
-          {remoteUserAvatar ? (
-            <Image
-              source={{ uri: remoteUserAvatar }}
-              style={styles.avatar}
-              contentFit="cover"
-            />
-          ) : (
-            <View
-              style={[
-                styles.avatarPlaceholder,
-                { backgroundColor: colors.surface.light },
-              ]}
-            >
-              <Ionicons
-                name="person"
-                size={60}
-                color={colors.subtleForeground}
-              />
-            </View>
-          )}
+          <Image
+            source={getAvatarUrl(remoteUserName, remoteUserAvatar)}
+            style={styles.avatar}
+            contentFit="cover"
+          />
         </View>
 
         <Text style={styles.name}>{remoteUserName || "Someone"}</Text>

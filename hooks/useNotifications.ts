@@ -1,15 +1,13 @@
 import { useApi } from "@/lib/axios";
 import { useCallStore } from "@/lib/callStore";
-import { useSocketStore } from "@/lib/socket";
-import { auth } from "@/lib/firebase";
+import { useAuthStore } from "@/hooks/useAuthStore";
+import { useCurrentUser } from "@/hooks/useAuth";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
-import { displayIncomingCallViaCallKeep } from "@/hooks/useCallKeep";
-import { getMessaging, getToken, onTokenRefresh, registerDeviceForRemoteMessages } from "@react-native-firebase/messaging";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Foreground notification handler
@@ -47,7 +45,7 @@ Notifications.setNotificationHandler({
  * Call notifications are handled by useCallKeep (the CallKeep integration).
  * This hook only deals with:
  *  1. Requesting push permission
- *  2. Registering the FCM/Expo push token to the backend
+ *  2. Registering the Expo push token to the backend
  *  3. Navigating to chats when a chat notification is tapped
  *  4. Checking for cold-start call notifications (app was killed)
  */
@@ -57,6 +55,11 @@ export function useNotifications() {
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
   const receivedListener = useRef<Notifications.EventSubscription | null>(null);
   const tokenRegistered = useRef(false);
+
+  // Wait for the backend user to exist before registering push tokens.
+  // AuthSync seeds this query on sign-in, so when data is available the user
+  // is guaranteed to exist in the backend (prevents "User not found" 404).
+  const { data: backendUser } = useCurrentUser();
 
   // ── Notification response listener (tap on notification) ────────────────
   useEffect(() => {
@@ -74,7 +77,10 @@ export function useNotifications() {
     receivedListener.current = Notifications.addNotificationReceivedListener(
       (notification) => {
         const data = notification.request.content.data as any;
-        console.log("[Notifications] Foreground received:", data?.type ?? "message");
+        console.log(
+          "[Notifications] Foreground received:",
+          data?.type ?? "message",
+        );
       },
     );
 
@@ -86,36 +92,27 @@ export function useNotifications() {
 
   // ── Token registration ───────────────────────────────────────────────────
   useEffect(() => {
-    // Only register if user is signed in
-    if (!auth().currentUser) return;
+    // Gate on BOTH Auth token AND backend user existing.
+    // backendUser is seeded on sign-in, so this only runs once the user is confirmed to exist.
+    const { token } = useAuthStore.getState();
+    if (!token || !backendUser) return;
 
     if (!tokenRegistered.current) {
       registerForPushNotifications();
     }
-
-    // Automatically update the backend if the FCM token changes
-    const unsubscribe = onTokenRefresh(getMessaging(), async (newToken) => {
-      console.log("[Notifications] FCM Token Refreshed:", newToken);
-      try {
-        await apiWithAuth({
-          method: "PATCH",
-          url: "/users/push-tokens",
-          data: { fcmToken: newToken },
-        });
-      } catch (err) {
-        console.error("[Notifications] Failed to sync refreshed FCM token:", err);
-      }
-    });
-
-    return unsubscribe;
-  }, [apiWithAuth]);
+  }, [apiWithAuth, backendUser]);
 
   // ─────────────────────────────────────────────────────────────────────────
   function handleResponse(response: Notifications.NotificationResponse) {
     const data = response.notification.request.content.data as any;
     const actionId = response.actionIdentifier;
 
-    console.log("[Notifications] Response — action:", actionId, "type:", data?.type);
+    console.log(
+      "[Notifications] Response — action:",
+      actionId,
+      "type:",
+      data?.type,
+    );
 
     if (data?.type === "incoming-call") {
       // App was tapped open from a call notification (not from CallKeep native UI)
@@ -128,7 +125,6 @@ export function useNotifications() {
         callType: callType ?? "audio",
         callId,
       });
-
     } else if (data?.chatId && data?.participantId && data?.name) {
       // Chat message notification — navigate to the conversation
       router.push({
@@ -187,24 +183,16 @@ export function useNotifications() {
         return;
       }
 
-      const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId,
+      });
       const expoPushToken = tokenData.data;
       console.log("[Notifications] Expo push token:", expoPushToken);
-
-      // Get Raw FCM Token for Firebase Messaging (VoIP)
-      let fcmToken = null;
-      try {
-        await registerDeviceForRemoteMessages(getMessaging());
-        fcmToken = await getToken(getMessaging());
-        console.log("[Notifications] FCM raw token:", fcmToken);
-      } catch (fcmErr) {
-        console.warn("[Notifications] Failed to get FCM token:", fcmErr);
-      }
 
       await apiWithAuth({
         method: "PATCH",
         url: "/users/push-tokens",
-        data: { expoPushToken, fcmToken },
+        data: { expoPushToken, fcmToken: null }, // Removed direct FCM token logic
       });
 
       console.log("[Notifications] Tokens saved to backend.");

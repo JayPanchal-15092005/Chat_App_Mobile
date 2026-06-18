@@ -1,4 +1,3 @@
-import AuthSync from "@/components/AuthSync";
 import SocketConnection from "@/components/SocketConnection";
 import { ThemeProvider } from "@/constants/Theme";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -7,14 +6,13 @@ import { useTheme } from "@/hooks/useTheme";
 import IncomingCallModal from "@/components/IncomingCallModal";
 import OutgoingCallScreen from "@/components/OutgoingCallScreen";
 import ActiveCallScreen from "@/components/ActiveCallScreen";
-import { auth } from "@/lib/firebase";
+import { useAuthStore } from "@/hooks/useAuthStore";
 import * as Sentry from "@sentry/react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-get-random-values"; // MUST BE THE VERY FIRST IMPORT!
-import { useEffect, useState } from "react";
-import type { FirebaseAuthTypes } from "@react-native-firebase/auth";
+import { useEffect } from "react";
 
 const queryClient = new QueryClient();
 
@@ -59,29 +57,22 @@ function CallNotificationSetup() {
 // AppContent — rendered inside all providers
 // ─────────────────────────────────────────────
 function AppContent() {
-  const [firebaseUser, setFirebaseUser] =
-    useState<FirebaseAuthTypes.User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const { token, isLoading, restoreToken } = useAuthStore();
   const { colors } = useTheme();
 
   useEffect(() => {
-    // Subscribe to Firebase auth state
-    const unsubscribe = auth().onAuthStateChanged((user) => {
-      setFirebaseUser(user);
-      setAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+    // Check for stored custom JWT on app start
+    restoreToken();
+  }, [restoreToken]);
 
-  // Don't render anything until Firebase has resolved the auth state
-  if (authLoading) return null;
+  // Don't render anything until we check secure storage
+  if (isLoading) return null;
 
-  const isSignedIn = !!firebaseUser;
+  const isSignedIn = !!token;
 
   return (
     <>
       <StatusBar style={colors.isDark ? "light" : "dark"} backgroundColor={colors.surface.default} />
-      <AuthSync />
       <SocketConnection />
       <CallNotificationSetup />
       {/* Only mount PushNotificationSetup after sign-in so apiWithAuth works */}

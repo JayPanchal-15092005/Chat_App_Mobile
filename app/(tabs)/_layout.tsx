@@ -1,9 +1,15 @@
 import { useTheme } from "@/hooks/useTheme";
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { useAuthStore } from "@/hooks/useAuthStore";
+import { Redirect, Tabs } from "expo-router";
 
 const TabsLayout = () => {
   const { colors, isDark } = useTheme();
+  const { token } = useAuthStore();
+
+  if (!token) {
+    return <Redirect href="/(auth)" />;
+  }
 
   return (
     <Tabs

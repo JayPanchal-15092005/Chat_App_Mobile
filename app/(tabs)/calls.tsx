@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { useTheme } from "@/hooks/useTheme";
+import { getAvatarUrl } from "@/lib/utils";
 import { useApi } from "@/lib/axios";
 import { useCurrentUser } from "@/hooks/useAuth";
 
@@ -76,6 +77,8 @@ const CallsTab = () => {
       });
       return data.calls;
     },
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30_000),
   });
 
   const styles = makeStyles(colors);
@@ -89,21 +92,11 @@ const CallsTab = () => {
       return (
         <View style={styles.callItem}>
           <View style={styles.avatarContainer}>
-            {otherUser.avatar ? (
-              <Image
-                source={{ uri: otherUser.avatar }}
-                style={styles.avatar}
-                contentFit="cover"
-              />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Ionicons
-                  name="person"
-                  size={24}
-                  color={colors.subtleForeground}
-                />
-              </View>
-            )}
+            <Image
+              source={getAvatarUrl(otherUser.name, otherUser.avatar)}
+              style={styles.avatar}
+              contentFit="cover"
+            />
           </View>
 
           <View style={styles.callInfo}>
@@ -141,6 +134,7 @@ const CallsTab = () => {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color={colors.primary.default} />
+        <Text style={styles.loadingText}>Connecting to server{"\n"}(this may take a moment…)</Text>
       </View>
     );
   }
@@ -149,6 +143,7 @@ const CallsTab = () => {
     return (
       <View style={styles.centerContainer}>
         <Text style={styles.errorText}>Failed to load calls</Text>
+        <Text style={styles.errorSubText}>Check your internet connection and try again.</Text>
         <Pressable onPress={() => refetch()} style={styles.retryButton}>
           <Text style={styles.retryText}>Retry</Text>
         </Pressable>
@@ -224,10 +219,25 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       backgroundColor: colors.surface.default,
       alignItems: "center",
       justifyContent: "center",
+      gap: 8,
+    },
+    loadingText: {
+      color: colors.mutedForeground,
+      fontSize: 14,
+      marginTop: 12,
+      textAlign: "center",
+      lineHeight: 22,
     },
     errorText: {
       color: "#EF4444",
       fontSize: 16,
+      fontWeight: "600",
+    },
+    errorSubText: {
+      color: colors.mutedForeground,
+      fontSize: 13,
+      textAlign: "center",
+      marginHorizontal: 24,
     },
     retryButton: {
       marginTop: 16,

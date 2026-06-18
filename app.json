@@ -108,7 +108,6 @@
       "expo-font",
       "expo-asset",
       "@config-plugins/react-native-callkeep",
-      "@react-native-firebase/app",
       [
         "expo-build-properties",
         {
@@ -116,10 +115,7 @@
             "useFrameworks": "static"
           }
         }
-      ],
-      "@react-native-firebase/messaging",
-      "@react-native-firebase/auth",
-      "@react-native-google-signin/google-signin"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

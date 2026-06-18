@@ -1,8 +1,13 @@
 import { useTheme } from "@/hooks/useTheme";
-import useFirebaseAuth from "@/hooks/useFirebaseAuth";
+import { useAuthStore } from "@/hooks/useAuthStore";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import { uploadToImageKit } from "@/lib/imagekit";
+import { useApi } from "@/lib/axios";
+import { getAvatarUrl } from "@/lib/utils";
+import { useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -26,9 +31,54 @@ interface MenuSection {
 }
 
 const ProfileTab = () => {
-  const { signOut } = useFirebaseAuth();
-  const { data: user } = useCurrentUser();
+  const { clearAuth, setAuth, token } = useAuthStore();
+  const { data: user, refetch } = useCurrentUser();
   const { colors, isDark, toggleTheme } = useTheme();
+  const { apiWithAuth } = useApi();
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleImageUpload = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      setIsUploading(true);
+      const uri = result.assets[0].uri;
+
+      // Upload to ImageKit
+      const imageUrl = await uploadToImageKit(uri);
+
+      if (!imageUrl) {
+        throw new Error("Failed to upload image");
+      }
+
+      // Update profile backend
+      const { data: updatedUser } = await apiWithAuth({
+        url: "/auth/profile",
+        method: "PATCH",
+        data: { avatar: imageUrl },
+      });
+
+      // Update auth store
+      if (token) {
+        await setAuth(token, updatedUser);
+      }
+      refetch();
+    } catch (error) {
+      console.error("Failed to update profile picture", error);
+      // You could add an Alert here
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const styles = makeStyles(colors);
 
@@ -95,11 +145,15 @@ const ProfileTab = () => {
         <View style={styles.profileSection}>
           <View>
             <View style={styles.avatarBorder}>
-              <Image source={user?.avatar} style={styles.avatarImage} />
+              <Image source={getAvatarUrl(user?.name, user?.avatar)} style={styles.avatarImage} />
             </View>
 
-            <Pressable style={styles.cameraButton}>
-              <Ionicons name="camera" size={16} color={colors.surface.dark} />
+            <Pressable 
+              style={[styles.cameraButton, isUploading && { opacity: 0.5 }]} 
+              onPress={handleImageUpload}
+              disabled={isUploading}
+            >
+              <Ionicons name={isUploading ? "hourglass-outline" : "camera"} size={16} color={colors.surface.dark} />
             </Pressable>
           </View>
 
@@ -187,7 +241,7 @@ const ProfileTab = () => {
           styles.logoutButton,
           pressed && styles.logoutButtonPressed,
         ]}
-        onPress={() => signOut()}
+        onPress={() => clearAuth()}
       >
         <View style={styles.logoutContent}>
           <Ionicons name="log-out-outline" size={20} color="#EF4444" />

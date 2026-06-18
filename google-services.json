@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "498460488319-mgc6cb88g6lnphgujqreu1oilvri83v8.apps.googleusercontent.com",
+          "client_id": "498460488319-n7g12pipjcp6r76f8rfcseo2u60nh6vp.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.ketan_panchal.chatapp",
-            "certificate_hash": "53a9dea26dab7ac7d413df524fea952380418ad0"
+            "certificate_hash": "74f055640bf4374279b79d04351405a6d7c97ca2"
           }
         },
         {

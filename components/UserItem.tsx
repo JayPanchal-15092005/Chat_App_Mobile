@@ -2,6 +2,7 @@ import { useTheme } from "@/hooks/useTheme";
 import type { User } from "@/types";
 import { Image } from "expo-image";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { getAvatarUrl } from "@/lib/utils";
 
 type UserItemProps = {
   user: User;
@@ -22,7 +23,7 @@ function UserItem({ user, isOnline, onPress }: UserItemProps) {
       onPress={onPress}
     >
       <View style={styles.avatarContainer}>
-        <Image source={{ uri: user.avatar }} style={styles.avatarImage} />
+        <Image source={getAvatarUrl(user.name, user.avatar)} style={styles.avatarImage} />
         {isOnline && <View style={styles.onlineIndicator} />}
       </View>
 

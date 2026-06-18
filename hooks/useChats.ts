@@ -15,6 +15,8 @@ export const useChats = () => {
       });
       return data;
     },
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30_000),
   });
 };
 

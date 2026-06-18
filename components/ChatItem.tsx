@@ -4,6 +4,7 @@ import { Chat } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNow } from "date-fns";
 import { Image } from "expo-image";
+import { getAvatarUrl } from "@/lib/utils";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 const ChatItem = ({
@@ -47,7 +48,7 @@ const ChatItem = ({
 
       {/* Avatar & online indicator */}
       <View style={styles.avatarWrapper}>
-        <Image source={participant.avatar} style={styles.avatarImage} />
+        <Image source={getAvatarUrl(participant.name, participant.avatar)} style={styles.avatarImage} />
         {isOnline && <View style={styles.onlineIndicator} />}
       </View>
 

@@ -1,9 +1,11 @@
 import EmptyUI from "@/components/EmptyUI";
 import MessageBubble from "@/components/MessageBubble";
 import ReplyPreview from "@/components/ReplyPreview";
+import { useAuthStore } from "@/hooks/useAuthStore";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useMessages } from "@/hooks/useMessages";
 import { useTheme } from "@/hooks/useTheme";
+import { getAvatarUrl } from "@/lib/utils";
 import { useCallStore } from "@/lib/callStore";
 import { uploadToImageKit } from "@/lib/imagekit";
 import { useSocketStore } from "@/lib/socket";
@@ -14,7 +16,7 @@ import {
   requestRecordingPermissionsAsync,
   useAudioRecorder,
 } from "expo-audio";
-import auth from "@react-native-firebase/auth";
+// Removed Firebase import
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
@@ -186,7 +188,7 @@ const ChatDetailScreen = () => {
     if (!pendingImage || !currentUser) return;
     setIsUploadingMedia(true);
     try {
-      const token = await auth().currentUser?.getIdToken();
+      const token = useAuthStore.getState().token;
       if (!token) throw new Error("No token");
       const url = await uploadToImageKit(pendingImage.uri, "image", token);
       sendMessage(
@@ -244,7 +246,7 @@ const ChatDetailScreen = () => {
     if (!pendingVoice || !currentUser) return;
     setIsUploadingMedia(true);
     try {
-      const token = await auth().currentUser?.getIdToken();
+      const token = useAuthStore.getState().token;
       if (!token) throw new Error("No token");
       const url = await uploadToImageKit(pendingVoice, "voice", token);
       sendMessage(
@@ -291,7 +293,7 @@ const ChatDetailScreen = () => {
         </Pressable>
 
         <View style={styles.headerInfo}>
-          {avatar && <Image source={avatar} style={styles.headerAvatar} />}
+          {avatar && <Image source={getAvatarUrl(name, avatar)} style={styles.headerAvatar} />}
           <View style={styles.headerTextWrapper}>
             <Text style={styles.headerName} numberOfLines={1}>
               {name}
@@ -309,7 +311,7 @@ const ChatDetailScreen = () => {
 
         <View style={styles.headerActions}>
           <Pressable
-            onPress={() => startCall(participantId, name, avatar || "")}
+            onPress={() => startCall(participantId, name, getAvatarUrl(name, avatar) || "")}
             style={({ pressed }) => [
               styles.actionButton,
               pressed && styles.pressedState,

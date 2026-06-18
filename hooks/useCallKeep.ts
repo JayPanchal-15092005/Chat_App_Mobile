@@ -10,11 +10,11 @@
  *   eas build --profile development --platform android
  */
 
+import { __registerCallKeepEndCall, useCallStore } from "@/lib/callStore";
+import { useSocketStore } from "@/lib/socket";
+import * as Notifications from "expo-notifications";
 import { useEffect, useRef } from "react";
 import { AppState, Platform } from "react-native";
-import { getMessaging, onMessage } from "@react-native-firebase/messaging";
-import { useCallStore, __registerCallKeepEndCall } from "@/lib/callStore";
-import { useSocketStore } from "@/lib/socket";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Safe import — app won't crash before the native rebuild
@@ -25,8 +25,8 @@ try {
 } catch {
   console.warn(
     "[CallKeep] react-native-callkeep not found.\n" +
-    "Run: npx expo install react-native-callkeep @config-plugins/react-native-callkeep\n" +
-    "Then: eas build --profile development --platform android"
+      "Run: npx expo install react-native-callkeep @config-plugins/react-native-callkeep\n" +
+      "Then: eas build --profile development --platform android",
   );
 }
 
@@ -93,11 +93,13 @@ export function displayIncomingCallViaCallKeep(data: {
   // 1. Deduplication: Prevent showing UI twice for the same call
   if (data.callId) {
     if (_displayedCallIds.has(data.callId)) {
-      console.log(`[CallKeep] UI already shown for call ${data.callId} - skipping duplicate.`);
+      console.log(
+        `[CallKeep] UI already shown for call ${data.callId} - skipping duplicate.`,
+      );
       return;
     }
     _displayedCallIds.add(data.callId);
-    
+
     // Clear cache after 60s
     setTimeout(() => {
       _displayedCallIds.delete(data.callId as string);
@@ -108,7 +110,9 @@ export function displayIncomingCallViaCallKeep(data: {
   if (_activeCallUUID) {
     try {
       RNCallKeep.endCall(_activeCallUUID);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   const uuid = generateUUIDv4();
@@ -117,14 +121,16 @@ export function displayIncomingCallViaCallKeep(data: {
   const isVideo = data.callType === "video"; // ✅ Fixed: was `!== "video"`
   const callerName = data.callerName || "Unknown Caller";
 
-  console.log(`[CallKeep] displayIncomingCall — name: "${callerName}", uuid: ${uuid}, video: ${isVideo}`);
+  console.log(
+    `[CallKeep] displayIncomingCall — name: "${callerName}", uuid: ${uuid}, video: ${isVideo}`,
+  );
 
   RNCallKeep.displayIncomingCall(
-    uuid,            // callUUID (required, must be UUID v4)
-    data.callerId,   // handle — the caller's user ID (shown as subtitle on some devices)
-    callerName,      // localizedCallerName — shown as main title ✅
-    "generic",       // handleType: "number" | "email" | "generic"
-    isVideo,         // hasVideo ✅ Fixed
+    uuid, // callUUID (required, must be UUID v4)
+    data.callerId, // handle — the caller's user ID (shown as subtitle on some devices)
+    callerName, // localizedCallerName — shown as main title ✅
+    "generic", // handleType: "number" | "email" | "generic"
+    isVideo, // hasVideo ✅ Fixed
   );
 
   // Additional: update the display with the avatar if the library supports it
@@ -133,7 +139,9 @@ export function displayIncomingCallViaCallKeep(data: {
       ios: {},
       android: {},
     });
-  } catch { /* optional API — safe to ignore */ }
+  } catch {
+    /* optional API — safe to ignore */
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -194,7 +202,13 @@ export function useCallKeep() {
     };
 
     // ── endCall — user tapped Decline OR called ended by OS ──────────────
-    const onEndCall = ({ callUUID, reason }: { callUUID: string; reason?: number }) => {
+    const onEndCall = ({
+      callUUID,
+      reason,
+    }: {
+      callUUID: string;
+      reason?: number;
+    }) => {
       console.log("[CallKeep] endCall event:", callUUID, "reason:", reason);
 
       const { remoteUserId, callId, callStatus } = useCallStore.getState();
@@ -229,7 +243,13 @@ export function useCallKeep() {
     };
 
     // ── didPerformSetMutedCallAction — mute from lock screen ─────────────
-    const onMuteToggle = ({ muted, callUUID }: { muted: boolean; callUUID: string }) => {
+    const onMuteToggle = ({
+      muted,
+      callUUID,
+    }: {
+      muted: boolean;
+      callUUID: string;
+    }) => {
       console.log("[CallKeep] mute toggle:", muted, callUUID);
       const { isMuted, toggleMute } = useCallStore.getState();
       if (isMuted !== muted) toggleMute();
@@ -244,73 +264,80 @@ export function useCallKeep() {
       RNCallKeep.removeEventListener("answerCall", onAnswerCall);
       RNCallKeep.removeEventListener("endCall", onEndCall);
       RNCallKeep.removeEventListener("didLoadWithEvents", onDidLoadWithEvents);
-      RNCallKeep.removeEventListener("didPerformSetMutedCallAction", onMuteToggle);
+      RNCallKeep.removeEventListener(
+        "didPerformSetMutedCallAction",
+        onMuteToggle,
+      );
     };
   }, []);
 
-  // ── Foreground FCM Data Push → Native CallKeep call screen ──────────────
-  // When app is active/backgrounded (but JS is running), FCM data messages trigger this.
-  // We use this to bridge VoIP calls natively.
+  // ── Foreground / Background Data Push → Native CallKeep call screen ──────────────
   useEffect(() => {
     if (Platform.OS !== "android" || !RNCallKeep) return;
 
-    const unsubscribe = onMessage(getMessaging(), async (remoteMessage) => {
-      const data = remoteMessage.data;
-      if (data?.type !== "incoming-call") return;
+    const subscription = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        const data = notification.request.content.data as any;
+        if (data?.type !== "incoming-call") return;
 
-      const appCurrentState = AppState.currentState;
-      if (appCurrentState === "active") {
-        // Foreground — socket already fired IncomingCallModal. Nothing to do.
-        return;
-      }
+        const appCurrentState = AppState.currentState;
+        if (appCurrentState === "active") {
+          // Foreground — socket already fired IncomingCallModal. Nothing to do.
+          return;
+        }
 
-      console.log("[CallKeep] FCM Data Push in background — showing native call UI");
+        console.log(
+          "[CallKeep] Push received in background — showing native call UI",
+        );
 
-      // Set Zustand state so the modal is ready when the app foregrounds
-      const callType = (data.callType === "video" ? "video" : "audio") as "audio" | "video";
-      useCallStore.getState().setIncomingCallFromPush({
-        callerId:
-          typeof data.callerId === "string"
-            ? data.callerId
-            : JSON.stringify(data.callerId),
-        callerName:
-          typeof data.callerName === "string"
-            ? data.callerName
-            : JSON.stringify(data.callerName),
-        callerAvatar:
-          typeof data.callerAvatar === "string"
-            ? data.callerAvatar
-            : JSON.stringify(data.callerAvatar),
-        callType,
-        callId:
-          typeof data.callId === "string"
-            ? data.callId
-            : JSON.stringify(data.callId),
-      });
+        // Set Zustand state so the modal is ready when the app foregrounds
+        const callType = (data.callType === "video" ? "video" : "audio") as
+          | "audio"
+          | "video";
+        useCallStore.getState().setIncomingCallFromPush({
+          callerId:
+            typeof data.callerId === "string"
+              ? data.callerId
+              : JSON.stringify(data.callerId),
+          callerName:
+            typeof data.callerName === "string"
+              ? data.callerName
+              : JSON.stringify(data.callerName),
+          callerAvatar:
+            typeof data.callerAvatar === "string"
+              ? data.callerAvatar
+              : JSON.stringify(data.callerAvatar),
+          callType,
+          callId:
+            typeof data.callId === "string"
+              ? data.callId
+              : JSON.stringify(data.callId),
+        });
 
-      // Show OS-level incoming call screen
-      displayIncomingCallViaCallKeep({
-        callerId:
-          typeof data.callerId === "string"
-            ? data.callerId
-            : JSON.stringify(data.callerId),
-        callerName:
-          typeof data.callerName === "string"
-            ? data.callerName
-            : JSON.stringify(data.callerName),
-        callerAvatar:
-          typeof data.callerAvatar === "string"
-            ? data.callerAvatar
-            : JSON.stringify(data.callerAvatar),
-        callType,
-        callId:
-          typeof data.callId === "string"
-            ? data.callId
-            : JSON.stringify(data.callId),
-      });
-    });
+        // Show OS-level incoming call screen
+        displayIncomingCallViaCallKeep({
+          callerId:
+            typeof data.callerId === "string"
+              ? data.callerId
+              : JSON.stringify(data.callerId),
+          callerName:
+            typeof data.callerName === "string"
+              ? data.callerName
+              : JSON.stringify(data.callerName),
+          callerAvatar:
+            typeof data.callerAvatar === "string"
+              ? data.callerAvatar
+              : JSON.stringify(data.callerAvatar),
+          callType,
+          callId:
+            typeof data.callId === "string"
+              ? data.callId
+              : JSON.stringify(data.callId),
+        });
+      },
+    );
 
-    return unsubscribe;
+    return () => subscription.remove();
   }, []);
 }
 

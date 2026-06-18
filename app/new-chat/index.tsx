@@ -4,8 +4,10 @@ import { useGetOrCreateChat } from "@/hooks/useChats";
 import { useUsers } from "@/hooks/useUsers";
 import { useSocketStore } from "@/lib/socket";
 import { User } from "@/types";
-import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
+import { getAvatarUrl } from "@/lib/utils";
+import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -49,7 +51,7 @@ const NewChatScreen = () => {
               id: chat._id,
               participantId: chat.participant._id,
               name: chat.participant.name,
-              avatar: chat.participant.avatar,
+              avatar: getAvatarUrl(chat.participant.name, chat.participant.avatar),
             },
           });
         }, 100);

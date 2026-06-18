@@ -1,282 +1,277 @@
-import { Colors } from "@/constants/Colors";
-import useFirebaseAuth from "@/hooks/useFirebaseAuth";
 import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Dimensions,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuthStore } from "@/hooks/useAuthStore";
+import axios from "axios";
 
-const { height } = Dimensions.get("window");
+// Fallback to the same logic in axios.ts
+const API_BASE = (
+  process.env.EXPO_PUBLIC_API_URL ?? "https://chat-app-backend-zj3i.onrender.com"
+).replace(/^["']|["']$/g, "");
+const API_URL = `${API_BASE}/api`;
 
 const SignupScreen = () => {
-  const { signUpWithEmail, signInWithEmail, loading } = useFirebaseAuth();
-  const [isSignUp, setIsSignUp] = useState(true); // toggle between Sign Up / Sign In
-  const [displayName, setDisplayName] = useState("");
+  const { setAuth } = useAuthStore();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const isLoading = loading !== null;
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async () => {
-    if (!email.trim() || !password.trim()) return;
-    if (isSignUp) {
-      if (!displayName.trim()) return;
-      await signUpWithEmail(email.trim(), password, displayName.trim());
-    } else {
-      await signInWithEmail(email.trim(), password);
+  const handleSignup = async () => {
+    if (!name || !email || !password) {
+      Alert.alert("Error", "Please fill in all fields");
+      return;
+    }
+
+    if (password.length < 8) {
+      Alert.alert("Error", "Password must be at least 8 characters");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await axios.post(`${API_URL}/auth/register`, {
+        name,
+        email,
+        password,
+      });
+      const { token, ...user } = response.data;
+      await setAuth(token, user);
+      // Layout component automatically redirects because of auth state change
+    } catch (error: any) {
+      const message = error.response?.data?.message || "Failed to sign up";
+      Alert.alert("Signup Failed", message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      {/* Background */}
-      <View style={styles.backgroundWrapper}>
-        <LinearGradient
-          colors={["#0D0D0F", "#1A1A2E", "#16213E", "#0D0D0F"]}
-          style={StyleSheet.absoluteFillObject}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-        <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFillObject} />
-      </View>
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+          <View style={styles.content}>
+            <Pressable onPress={() => router.back()} style={styles.backButton}>
+               <Ionicons name="arrow-back" size={24} color="#FFF" />
+            </Pressable>
 
-      <SafeAreaView style={styles.safeArea}>
-        {/* Back button */}
-        <Pressable style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={Colors.foreground} />
-        </Pressable>
-
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.flex}
-        >
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
             {/* Header */}
             <View style={styles.header}>
-              <Text style={styles.title}>
-                {isSignUp ? "Create Account" : "Welcome Back"}
-              </Text>
-              <Text style={styles.subtitle}>
-                {isSignUp
-                  ? "Sign up to start chatting"
-                  : "Sign in to continue"}
-              </Text>
+              <View style={styles.iconContainer}>
+                <Ionicons name="sparkles" size={32} color="#FFFFFF" />
+              </View>
+              <Text style={styles.title}>Create an account✨</Text>
+              <Text style={styles.subtitle}>Welcome! Please enter your details.</Text>
             </View>
 
             {/* Form */}
             <View style={styles.form}>
-              {/* Name field — only for sign up */}
-              {isSignUp && (
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Full Name</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="person-outline" size={20} color={Colors.mutedForeground} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Your name"
-                      placeholderTextColor={Colors.mutedForeground}
-                      value={displayName}
-                      onChangeText={setDisplayName}
-                      autoCapitalize="words"
-                      editable={!isLoading}
-                    />
-                  </View>
-                </View>
-              )}
-
-              {/* Email */}
+              {/* Name Field */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Email</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="mail-outline" size={20} color={Colors.mutedForeground} style={styles.inputIcon} />
+                <Text style={styles.label}>Name</Text>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="person-outline" size={20} color="#888" style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
-                    placeholder="your@email.com"
-                    placeholderTextColor={Colors.mutedForeground}
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!isLoading}
+                    placeholder="Enter your name"
+                    placeholderTextColor="#888"
+                    autoCapitalize="words"
+                    value={name}
+                    onChangeText={setName}
                   />
                 </View>
               </View>
 
-              {/* Password */}
+              {/* Email Field */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Password</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="lock-closed-outline" size={20} color={Colors.mutedForeground} style={styles.inputIcon} />
+                <Text style={styles.label}>Email</Text>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="mail-outline" size={20} color="#888" style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
-                    placeholder="Min. 6 characters"
-                    placeholderTextColor={Colors.mutedForeground}
+                    placeholder="Enter your email"
+                    placeholderTextColor="#888"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={email}
+                    onChangeText={setEmail}
+                  />
+                </View>
+              </View>
+
+              {/* Password Field */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Password</Text>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="lock-closed-outline" size={20} color="#888" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="••••••••"
+                    placeholderTextColor="#888"
+                    secureTextEntry={!showPassword}
                     value={password}
                     onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    editable={!isLoading}
                   />
                   <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
-                    <Ionicons
-                      name={showPassword ? "eye-off-outline" : "eye-outline"}
-                      size={20}
-                      color={Colors.mutedForeground}
-                    />
+                    <Ionicons name={showPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#888" />
                   </Pressable>
                 </View>
               </View>
 
-              {/* Submit button */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.submitButton,
-                  pressed && styles.buttonPressed,
-                  isLoading && styles.buttonDisabled,
-                ]}
-                onPress={handleSubmit}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.submitButtonText}>
-                    {isSignUp ? "Create Account" : "Sign In"}
-                  </Text>
-                )}
-              </Pressable>
+              {/* Password Requirement */}
+              <View style={styles.rememberRow}>
+                <View style={styles.checkboxContainer}>
+                  <Ionicons 
+                    name={password.length >= 8 ? "checkmark-circle" : "ellipse-outline"} 
+                    size={20} 
+                    color={password.length >= 8 ? "#10B981" : "#555"} 
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.rememberText}>Must be at least 8 characters</Text>
+                </View>
+              </View>
 
-              {/* Toggle sign up / sign in */}
-              <Pressable
-                onPress={() => setIsSignUp(!isSignUp)}
-                style={styles.toggleButton}
-              >
-                <Text style={styles.toggleText}>
-                  {isSignUp ? "Already have an account? " : "Don't have an account? "}
-                  <Text style={styles.toggleTextBold}>
-                    {isSignUp ? "Sign In" : "Sign Up"}
-                  </Text>
-                </Text>
+              {/* Signup Button */}
+              <Pressable onPress={handleSignup} disabled={isLoading}>
+                <LinearGradient
+                  colors={["#E76F51", "#833AB4"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.signupButton}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Text style={styles.signupButtonText}>Sign Up</Text>
+                  )}
+                </LinearGradient>
               </Pressable>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.surface.dark },
-  backgroundWrapper: { ...StyleSheet.absoluteFillObject, overflow: "hidden" },
-  safeArea: { flex: 1 },
-  flex: { flex: 1 },
-  backButton: {
-    padding: 16,
-    alignSelf: "flex-start",
+  container: {
+    flex: 1,
+    backgroundColor: "#121212", // Dark background
   },
-  scrollContent: {
+  content: {
+    flex: 1,
     paddingHorizontal: 24,
-    paddingBottom: 40,
-    flexGrow: 1,
-    justifyContent: "center",
+    paddingBottom: 20,
+    paddingTop: 10,
+  },
+  backButton: {
+    marginBottom: 20,
   },
   header: {
-    marginBottom: 40,
-    alignItems: "center",
+    marginBottom: 30,
+  },
+  iconContainer: {
+    marginBottom: 24,
   },
   title: {
-    fontSize: 36,
+    fontSize: 28,
     fontWeight: "bold",
-    color: Colors.foreground,
-    textAlign: "center",
+    color: "#FFFFFF",
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: Colors.mutedForeground,
-    marginTop: 8,
-    textAlign: "center",
+    color: "#888888",
   },
   form: {
-    gap: 20,
+    flex: 1,
   },
   inputGroup: {
-    gap: 6,
+    marginBottom: 20,
   },
-  inputLabel: {
+  label: {
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: "600",
-    color: Colors.foreground,
+    fontWeight: "500",
+    marginBottom: 8,
   },
-  inputWrapper: {
+  inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderRadius: 14,
+    backgroundColor: "#1A1A1A",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    gap: 10,
+    borderColor: "#333",
+    borderRadius: 12,
+    height: 56,
+    paddingHorizontal: 16,
   },
   inputIcon: {
-    width: 20,
+    marginRight: 12,
   },
   input: {
     flex: 1,
-    color: Colors.foreground,
-    fontSize: 15,
+    color: "#FFFFFF",
+    fontSize: 16,
   },
   eyeIcon: {
     padding: 4,
   },
-  submitButton: {
-    backgroundColor: Colors.primary.default,
-    paddingVertical: 16,
-    borderRadius: 16,
+  rememberRow: {
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
+    marginBottom: 32,
   },
-  buttonPressed: {
-    transform: [{ scale: 0.97 }],
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-  },
-  toggleButton: {
+  checkboxContainer: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
   },
-  toggleText: {
-    color: Colors.mutedForeground,
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#555",
+    marginRight: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxChecked: {
+    backgroundColor: "#E76F51",
+    borderColor: "#E76F51",
+  },
+  rememberText: {
+    color: "#AAAAAA",
     fontSize: 14,
   },
-  toggleTextBold: {
-    color: Colors.primary.default,
-    fontWeight: "700",
+  signupButton: {
+    height: 56,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signupButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });
 

@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useCallback } from "react";
+import { getAvatarUrl } from "@/lib/utils";
 import {
   ActionSheetIOS,
   ActivityIndicator,
@@ -45,7 +46,7 @@ const ChatsTab = () => {
         id: chat._id,
         participantId: chat.participant._id,
         name: chat.participant.name,
-        avatar: chat.participant.avatar,
+        avatar: getAvatarUrl(chat.participant.name, chat.participant.avatar),
       },
     });
   };
@@ -103,6 +104,7 @@ const ChatsTab = () => {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color={colors.primary.default} />
+        <Text style={styles.loadingText}>Connecting to server{"\n"}(this may take a moment…)</Text>
       </View>
     );
   }
@@ -111,6 +113,7 @@ const ChatsTab = () => {
     return (
       <View style={styles.centerContainer}>
         <Text style={styles.errorText}>Failed to load chats</Text>
+        <Text style={styles.errorSubText}>Check your internet connection and try again.</Text>
         <Pressable onPress={() => refetch()} style={styles.retryButton}>
           <Text style={styles.retryText}>Retry</Text>
         </Pressable>
@@ -182,10 +185,25 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       backgroundColor: colors.surface.default,
       alignItems: "center",
       justifyContent: "center",
+      gap: 8,
+    },
+    loadingText: {
+      color: colors.mutedForeground,
+      fontSize: 14,
+      marginTop: 12,
+      textAlign: "center",
+      lineHeight: 22,
     },
     errorText: {
       color: "#EF4444",
       fontSize: 16,
+      fontWeight: "600",
+    },
+    errorSubText: {
+      color: colors.mutedForeground,
+      fontSize: 13,
+      textAlign: "center",
+      marginHorizontal: 24,
     },
     retryButton: {
       marginTop: 16,

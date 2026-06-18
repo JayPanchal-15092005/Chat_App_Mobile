@@ -1,46 +1,53 @@
-import { auth } from "@/lib/firebase";
+import { useAuthStore } from "@/hooks/useAuthStore";
 import { useSocketStore } from "@/lib/socket";
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
-import { useCallStore } from "@/lib/callStore";
+import { useEffect } from "react";
+import { AppState } from "react-native";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SocketConnection
-// Replaces Clerk's useAuth with Firebase onAuthStateChanged
-// Connects socket with Firebase ID token when user is signed in
+// SocketConnection — mounts at the root level to maintain global socket
+// Automatically connects/disconnects based on auth state and app state.
 // ─────────────────────────────────────────────────────────────────────────────
 const SocketConnection = () => {
-  const queryClient = useQueryClient();
-  const connect = useSocketStore((state) => state.connect);
-  const disconnect = useSocketStore((state) => state.disconnect);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
+  const connect = useSocketStore((s) => s.connect);
+  const disconnect = useSocketStore((s) => s.disconnect);
+  const { token, user } = useAuthStore();
 
   useEffect(() => {
-    // Listen to Firebase auth state changes
-    const unsubscribe = auth().onAuthStateChanged(async (firebaseUser) => {
-      if (firebaseUser) {
-        // User is signed in — get Firebase ID token
-        const token = await firebaseUser.getIdToken();
-        if (token) {
-          connect(token, queryClient);
-          // Always init call listeners when connecting
-          useCallStore.getState().initCallListeners();
-        }
-      } else {
-        // User signed out — cleanup everything
-        useCallStore.getState()._cleanup();
+    // 1. If signed out, ensure disconnected
+    if (!token || !user) {
+      disconnect();
+      return;
+    }
+
+    // 2. We are signed in. Define exactly how to connect using custom JWT.
+    const ensureConnected = async () => {
+      try {
+        connect(token, user._id);
+      } catch (error) {
+        console.error("[SocketConnection] Failed to get custom token:", error);
+      }
+    };
+
+    // 3. Connect immediately if app is in foreground
+    if (AppState.currentState === "active") {
+      ensureConnected();
+    }
+
+    // 4. Listen for background/foreground transitions
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        ensureConnected();
+      } else if (state === "background") {
+        // Render spins down unused sockets anyway, but explicit disconnect saves mobile battery
         disconnect();
       }
     });
 
-    unsubscribeRef.current = unsubscribe;
-
     return () => {
-      unsubscribeRef.current?.();
-      useCallStore.getState()._cleanup();
+      sub.remove();
       disconnect();
     };
-  }, [connect, disconnect, queryClient]);
+  }, [token, user, connect, disconnect]);
 
   return null;
 };

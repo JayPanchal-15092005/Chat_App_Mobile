@@ -1,36 +1,25 @@
-import { auth } from "@/lib/firebase";
+import { useAuthStore } from "@/hooks/useAuthStore";
 import { Redirect, Stack } from "expo-router";
-import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import type { FirebaseAuthTypes } from "@react-native-firebase/auth";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AuthLayout
-// Replaces Clerk's useAuth with Firebase onAuthStateChanged
-// Redirects signed-in users to (tabs), shows auth screens otherwise
+// Uses Zustand store to redirect signed-in users to (tabs), shows auth screens otherwise
 // ─────────────────────────────────────────────────────────────────────────────
 const AuthLayout = () => {
-  const [firebaseUser, setFirebaseUser] =
-    useState<FirebaseAuthTypes.User | null | undefined>(undefined);
+  const { token, isLoading } = useAuthStore();
 
-  useEffect(() => {
-    const unsubscribe = auth().onAuthStateChanged((user) => {
-      setFirebaseUser(user);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Still loading
-  if (firebaseUser === undefined) {
+  // Still loading the token from secure storage
+  if (isLoading) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#0D0D0F", justifyContent: "center", alignItems: "center" }}>
+      <View style={{ flex: 1, backgroundColor: "#121212", justifyContent: "center", alignItems: "center" }}>
         <ActivityIndicator size="large" color="#F4A261" />
       </View>
     );
   }
 
   // Already signed in → redirect to main app
-  if (firebaseUser) return <Redirect href={"/(tabs)"} />;
+  if (token) return <Redirect href={"/(tabs)"} />;
 
   // Not signed in → show auth screens (index = login, signup = email signup)
   return (

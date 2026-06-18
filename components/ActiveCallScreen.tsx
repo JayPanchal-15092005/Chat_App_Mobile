@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallStore } from "@/lib/callStore";
 import { RTCView } from "react-native-webrtc";
 import { useTheme } from "@/hooks/useTheme";
+import { getAvatarUrl } from "@/lib/utils";
 
 const { width, height } = Dimensions.get("window");
 
@@ -55,11 +56,9 @@ const ActiveCallScreen = () => {
       ) : (
         <View style={styles.audioBg}>
           {remoteUserAvatar ? (
-            <Image source={{ uri: remoteUserAvatar }} style={styles.avatar} />
+            <Image source={getAvatarUrl(remoteUserName, remoteUserAvatar)} style={styles.avatar} />
           ) : (
-            <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface.light }]}>
-              <Ionicons name="person" size={80} color={colors.subtleForeground} />
-            </View>
+            <Image source={getAvatarUrl(remoteUserName, null)} style={styles.avatar} />
           )}
           {/* CRITICAL: react-native-webrtc requires an RTCView to bind audio tracks even in audio-only calls */}
           {remoteStream && (
