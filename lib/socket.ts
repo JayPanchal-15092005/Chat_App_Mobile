@@ -46,7 +46,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
     socket.on("connect", () => {
       console.log("Socket connected:", socket.id);
-      Sentry.logger.info("Socket connected", { socketId: socket.id });
+      console.log("Socket connected", { socketId: socket.id });
       set({ isConnected: true });
     });
 
@@ -243,10 +243,10 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
     socket.emit("send-message", { chatId, text, replyToId, type, mediaUrl });
 
-    Sentry.logger.info("Message sent", { chatId, messageLength: text.length });
+    console.log("Message sent", { chatId, messageLength: text.length });
 
     const errorHandler = (error: { message: string }) => {
-      Sentry.logger.error("Failed to send message", { chatId, error: error.message });
+      console.error("Failed to send message", { chatId, error: error.message });
       queryClient.setQueryData<Message[]>(["messages", chatId], (old) => {
         if (!old) return [];
         return old.filter((m) => m._id !== tempId);

@@ -22,17 +22,15 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response) {
-      Sentry.logger.error(
-        Sentry.logger
-          .fmt`API request failed: ${error.config?.method?.toUpperCase()} ${error.config?.url}`,
+      console.error(
+        `API request failed: ${error.config?.method?.toUpperCase()} ${error.config?.url}`,
         {
           status: error.response.status,
-          endpoint: error.config?.url,
-          method: error.config?.method,
+          data: error.response.data,
         },
       );
     } else if (error.request) {
-      Sentry.logger.warn("API request failed - no response", {
+      console.warn("API request failed - no response", {
         endpoint: error.config?.url,
         method: error.config?.method,
       });
