@@ -45,11 +45,6 @@ export default function MessageBubble({
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.text);
 
-  // Audio player via expo-audio (works in Expo Go, no native module needed)
-  const audioPlayer = useAudioPlayer(message.type === "voice" && message.mediaUrl ? { uri: message.mediaUrl } : null);
-  const audioStatus = useAudioPlayerStatus(audioPlayer);
-  const isPlaying = audioStatus.playing;
-
   const styles = makeStyles(colors);
 
   // ── Derived values ──────────────────────────────────────────────────
@@ -69,22 +64,6 @@ export default function MessageBubble({
     Date.now() - new Date(message.createdAt).getTime() < 15 * 60 * 1000;
 
   // ── Handlers ────────────────────────────────────────────────────────
-  const playSound = async () => {
-    if (!message.mediaUrl) return;
-    try {
-      if (isPlaying) {
-        audioPlayer.pause();
-      } else {
-        // If finished, seek back to start before replaying
-        if (audioStatus.didJustFinish) {
-          audioPlayer.seekTo(0);
-        }
-        audioPlayer.play();
-      }
-    } catch (err) {
-      console.error("Audio playback error", err);
-    }
-  };
 
   const handleLongPress = () => setShowContextMenu(true);
 
@@ -249,30 +228,7 @@ export default function MessageBubble({
             )}
 
             {message.type === "voice" && message.mediaUrl && (
-              <Pressable
-                onPress={playSound}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingVertical: 8,
-                  gap: 8,
-                  minWidth: 120,
-                }}
-              >
-                <Ionicons
-                  name={isPlaying ? "pause" : "play"}
-                  size={24}
-                  color={isFromMe ? "#000" : colors.primary.default}
-                />
-                <Text
-                  style={{
-                    color: isFromMe ? "#000" : colors.foreground,
-                    fontSize: 12,
-                  }}
-                >
-                  {isPlaying ? "Playing..." : "Voice Message"}
-                </Text>
-              </Pressable>
+              <VoiceMessagePlayer mediaUrl={message.mediaUrl} isFromMe={isFromMe} colors={colors} />
             )}
 
             {/* ── Message text ── */}
@@ -677,3 +633,53 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       fontWeight: "500",
     },
   });
+
+
+function VoiceMessagePlayer({ mediaUrl, isFromMe, colors }: { mediaUrl: string, isFromMe: boolean, colors: any }) {
+  const audioPlayer = useAudioPlayer({ uri: mediaUrl });
+  const audioStatus = useAudioPlayerStatus(audioPlayer);
+  const isPlaying = audioStatus.playing;
+
+  const playSound = () => {
+    try {
+      if (isPlaying) {
+        audioPlayer.pause();
+      } else {
+        if (audioStatus.didJustFinish) {
+          audioPlayer.seekTo(0);
+        }
+        audioPlayer.play();
+      }
+    } catch (err) {
+      console.error("Audio playback error", err);
+    }
+  };
+
+  return (
+    <Pressable
+      onPress={playSound}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 8,
+        gap: 8,
+        minWidth: 120,
+      }}
+    >
+      <Ionicons
+        name={isPlaying ? "pause" : "play"}
+        size={24}
+        color={isFromMe ? "#000" : colors.primary.default}
+      />
+      <Text
+        style={{
+          color: isFromMe ? "#000" : colors.foreground,
+          fontSize: 12,
+        }}
+      >
+        {isPlaying ? "Playing..." : "Voice Message"}
+      </Text>
+    </Pressable>
+  );
+}
+

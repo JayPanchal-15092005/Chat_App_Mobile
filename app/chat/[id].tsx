@@ -108,7 +108,7 @@ const ChatDetailScreen = () => {
     if (messages && messages.length > 0 && isConnected) {
       markSeen(chatId);
       setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
+        scrollViewRef.current?.scrollToEnd({ animated: false });
       }, 100);
     }
   }, [messages, chatId, isConnected, markSeen]);
@@ -155,11 +155,6 @@ const ChatDetailScreen = () => {
     setMessageText("");
     setReplyingTo(null);
     setIsSending(false);
-
-    setTimeout(
-      () => scrollViewRef.current?.scrollToEnd({ animated: true }),
-      100,
-    );
   };
 
   const handlePickImage = async () => {
