@@ -88,7 +88,8 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       });
 
       queryClient.setQueryData<Chat[]>(["chats"], (oldChats) => {
-        return oldChats?.map((chat) => {
+        if (!oldChats) return oldChats;
+        return oldChats.map((chat) => {
           if (chat._id === message.chat) {
             return {
               ...chat,
@@ -104,6 +105,9 @@ export const useSocketStore = create<SocketState>((set, get) => ({
           return chat;
         });
       });
+
+      // Also invalidate so fresh data is fetched if cache was cold
+      queryClient.invalidateQueries({ queryKey: ["chats"] });
 
       if (currentChatId !== message.chat) {
         const chats = queryClient.getQueryData<Chat[]>(["chats"]);

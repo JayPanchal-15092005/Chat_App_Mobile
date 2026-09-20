@@ -24,10 +24,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -66,7 +66,7 @@ const ChatDetailScreen = () => {
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [isRecording, setIsRecording] = useState(false);
 
-  const scrollViewRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList<Message>>(null);
 
   const { colors } = useTheme();
   const { data: currentUser } = useCurrentUser();
@@ -107,9 +107,6 @@ const ChatDetailScreen = () => {
   useEffect(() => {
     if (messages && messages.length > 0 && isConnected) {
       markSeen(chatId);
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: false });
-      }, 100);
     }
   }, [messages, chatId, isConnected, markSeen]);
 
@@ -359,15 +356,22 @@ const ChatDetailScreen = () => {
               iconSize={64}
             />
           ) : (
-            <ScrollView
-              ref={scrollViewRef}
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(item) => item._id}
               contentContainerStyle={styles.scrollContent}
               onContentSizeChange={() =>
-                scrollViewRef.current?.scrollToEnd({ animated: false })
+                flatListRef.current?.scrollToEnd({ animated: false })
               }
-            >
-              {messages.map((message) => {
-                const senderId = (message.sender as MessageSender)._id;
+              onLayout={() =>
+                flatListRef.current?.scrollToEnd({ animated: false })
+              }
+              renderItem={({ item: message }) => {
+                const senderId =
+                  typeof message.sender === "string"
+                    ? message.sender
+                    : (message.sender as MessageSender)._id;
                 const isFromMe = currentUser
                   ? senderId === currentUser._id
                   : false;
@@ -382,8 +386,8 @@ const ChatDetailScreen = () => {
                     onReply={handleReply}
                   />
                 );
-              })}
-            </ScrollView>
+              }}
+            />
           )}
 
           {/* Reply preview */}
