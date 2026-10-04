@@ -8,11 +8,14 @@ import {
 } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { useState } from "react";
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import {
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -44,6 +47,31 @@ export default function MessageBubble({
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.text);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  const handleDownloadImage = async () => {
+    if (!message.mediaUrl) return;
+    try {
+      // 1. Download to local cache
+      const fileUri = FileSystem.cacheDirectory + `download_${Date.now()}.jpg`;
+      const { uri } = await FileSystem.downloadAsync(message.mediaUrl, fileUri);
+      
+      // 2. Open share sheet (which allows saving to gallery / device natively)
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'image/jpeg',
+          dialogTitle: 'Download Image',
+          UTI: 'public.jpeg',
+        });
+      } else {
+        Alert.alert('Error', 'Sharing is not available on this device.');
+      }
+    } catch (error) {
+      console.error('Download failed', error);
+      Alert.alert('Error', 'Failed to download image.');
+    }
+  };
 
   const styles = makeStyles(colors);
 
@@ -215,16 +243,18 @@ export default function MessageBubble({
 
             {/* ── Message Media ── */}
             {message.type === "image" && message.mediaUrl && (
-              <Image
-                source={message.mediaUrl}
-                style={{
-                  width: 220,
-                  height: 220,
-                  borderRadius: 12,
-                  marginBottom: 4,
-                }}
-                contentFit="cover"
-              />
+              <Pressable onPress={() => setIsFullScreen(true)}>
+                <Image
+                  source={message.mediaUrl}
+                  style={{
+                    width: 220,
+                    height: 220,
+                    borderRadius: 12,
+                    marginBottom: 4,
+                  }}
+                  contentFit="cover"
+                />
+              </Pressable>
             )}
 
             {message.type === "voice" && message.mediaUrl && (
@@ -404,6 +434,32 @@ export default function MessageBubble({
             )}
           </View>
         </Pressable>
+      </Modal>
+
+      {/* ── Full Screen Image Modal ── */}
+      <Modal
+        visible={isFullScreen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsFullScreen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ position: 'absolute', top: Platform.OS === 'ios' ? 60 : 40, right: 20, flexDirection: 'row', gap: 20, zIndex: 10 }}>
+            <Pressable onPress={handleDownloadImage} style={{ padding: 10 }}>
+              <Ionicons name="download-outline" size={28} color="white" />
+            </Pressable>
+            <Pressable onPress={() => setIsFullScreen(false)} style={{ padding: 10 }}>
+              <Ionicons name="close-outline" size={28} color="white" />
+            </Pressable>
+          </View>
+          {message.mediaUrl && (
+            <Image
+              source={message.mediaUrl}
+              style={{ width: '100%', height: '100%' }}
+              contentFit="contain"
+            />
+          )}
+        </View>
       </Modal>
     </>
   );

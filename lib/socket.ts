@@ -1,8 +1,9 @@
 import { Chat, Message, MessageReaction, MessageSender } from "@/types";
 import * as Sentry from "@sentry/react-native";
-import { QueryClient } from "@tanstack/react-query";
 import { io, Socket } from "socket.io-client";
 import { create } from "zustand";
+// Import the queryClient singleton directly — avoids the broken pass-through-connect pattern
+import { queryClient } from "@/app/_layout";
 
 const SOCKET_URL = "https://chat-app-backend-zj3i.onrender.com";
 
@@ -13,9 +14,8 @@ interface SocketState {
   typingUsers: Map<string, string>;
   unreadChats: Set<string>;
   currentChatId: string | null;
-  queryClient: QueryClient | null;
 
-  connect: (token: string, queryClient: QueryClient) => void;
+  connect: (token: string) => void;
   disconnect: () => void;
   joinChat: (chatId: string) => void;
   leaveChat: (chatId: string) => void;
@@ -35,9 +35,8 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   typingUsers: new Map(),
   unreadChats: new Set(),
   currentChatId: null,
-  queryClient: null,
 
-  connect: (token, queryClient) => {
+  connect: (token) => {
     const existingSocket = get().socket;
     if (existingSocket?.connected) return;
     if (existingSocket) existingSocket.disconnect();
@@ -185,7 +184,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       });
     });
 
-    set({ socket, queryClient });
+    set({ socket });
   },
 
   disconnect: () => {
@@ -199,7 +198,6 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         typingUsers: new Map(),
         unreadChats: new Set(),
         currentChatId: null,
-        queryClient: null,
       });
     }
   },
@@ -221,8 +219,8 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   },
 
   sendMessage: (chatId, text, currentUser, replyToId, type = "text", mediaUrl = "") => {
-    const { socket, queryClient } = get();
-    if (!socket?.connected || !queryClient) return;
+    const { socket } = get();
+    if (!socket?.connected) return;
 
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage: Message = {

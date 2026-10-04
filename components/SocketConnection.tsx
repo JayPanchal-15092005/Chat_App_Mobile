@@ -22,7 +22,7 @@ const SocketConnection = () => {
     // 2. We are signed in. Define exactly how to connect using custom JWT.
     const ensureConnected = async () => {
       try {
-        connect(token, user._id);
+        connect(token);
       } catch (error) {
         console.error("[SocketConnection] Failed to get custom token:", error);
       }

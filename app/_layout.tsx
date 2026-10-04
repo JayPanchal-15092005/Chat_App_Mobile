@@ -14,7 +14,7 @@ import { StatusBar } from "expo-status-bar";
 import "react-native-get-random-values"; // MUST BE THE VERY FIRST IMPORT!
 import { useEffect } from "react";
 
-const queryClient = new QueryClient();
+export const queryClient = new QueryClient();
 
 // ─────────────────────────────────────────────
 // Sentry

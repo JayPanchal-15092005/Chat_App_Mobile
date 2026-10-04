@@ -41,7 +41,7 @@ const ProfileTab = () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        allowsEditing: false,
         aspect: [1, 1],
         quality: 0.8,
       });
@@ -53,8 +53,9 @@ const ProfileTab = () => {
       setIsUploading(true);
       const uri = result.assets[0].uri;
 
-      // Upload to ImageKit
-      const imageUrl = await uploadToImageKit(uri);
+      // Upload to ImageKit — pass type "image" and the JWT token for auth
+      if (!token) throw new Error("Not authenticated");
+      const imageUrl = await uploadToImageKit(uri, "image", token);
 
       if (!imageUrl) {
         throw new Error("Failed to upload image");
