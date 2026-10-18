@@ -8,13 +8,12 @@ import OutgoingCallScreen from "@/components/OutgoingCallScreen";
 import ActiveCallScreen from "@/components/ActiveCallScreen";
 import { useAuthStore } from "@/hooks/useAuthStore";
 import * as Sentry from "@sentry/react-native";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-get-random-values"; // MUST BE THE VERY FIRST IMPORT!
 import { useEffect } from "react";
-
-export const queryClient = new QueryClient();
+import { queryClient } from "@/lib/queryClient";
 
 // ─────────────────────────────────────────────
 // Sentry
@@ -104,12 +103,16 @@ function AppContent() {
 // ─────────────────────────────────────────────
 // Root layout — ClerkProvider removed
 // ─────────────────────────────────────────────
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+
 export default Sentry.wrap(function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AppContent />
-      </ThemeProvider>
-    </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 });

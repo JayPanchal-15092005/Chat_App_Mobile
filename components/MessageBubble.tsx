@@ -8,14 +8,11 @@ import {
 } from "@/types";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import * as FileSystem from "expo-file-system";
-import * as Sharing from "expo-sharing";
 import { useState } from "react";
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import {
   Alert,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -24,6 +21,45 @@ import {
   TextInput,
   View,
 } from "react-native";
+import Animated, {
+  Extrapolation,
+  interpolate,
+  SharedValue,
+  useAnimatedStyle,
+} from "react-native-reanimated";
+
+const MONTHS = [
+  "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+  "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+];
+
+const formatRevealTime = (dateString?: string) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
+
+  const today = new Date();
+  const isToday =
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear();
+
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const minutesStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
+  const timeString = `${hours}:${minutesStr} ${ampm}`;
+
+  if (isToday) {
+    return timeString;
+  }
+
+  const day = date.getDate();
+  const month = MONTHS[date.getMonth()];
+  return `${day} ${month}\n${timeString}`;
+};
 
 interface MessageBubbleProps {
   message: Message;
@@ -31,6 +67,8 @@ interface MessageBubbleProps {
   chatId: string;
   currentUserId: string;
   onReply: (message: Message) => void;
+  onImageLoad?: () => void;
+  panX?: SharedValue<number>;
 }
 
 export default function MessageBubble({
@@ -39,6 +77,8 @@ export default function MessageBubble({
   chatId,
   currentUserId,
   onReply,
+  onImageLoad,
+  panX,
 }: MessageBubbleProps) {
   const { colors } = useTheme();
   const { reactToMessage, editMessage, deleteMessage } = useSocketStore();
@@ -48,30 +88,6 @@ export default function MessageBubble({
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.text);
   const [isFullScreen, setIsFullScreen] = useState(false);
-
-  const handleDownloadImage = async () => {
-    if (!message.mediaUrl) return;
-    try {
-      // 1. Download to local cache
-      const fileUri = FileSystem.cacheDirectory + `download_${Date.now()}.jpg`;
-      const { uri } = await FileSystem.downloadAsync(message.mediaUrl, fileUri);
-      
-      // 2. Open share sheet (which allows saving to gallery / device natively)
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (isAvailable) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'image/jpeg',
-          dialogTitle: 'Download Image',
-          UTI: 'public.jpeg',
-        });
-      } else {
-        Alert.alert('Error', 'Sharing is not available on this device.');
-      }
-    } catch (error) {
-      console.error('Download failed', error);
-      Alert.alert('Error', 'Failed to download image.');
-    }
-  };
 
   const styles = makeStyles(colors);
 
@@ -222,6 +238,19 @@ export default function MessageBubble({
     );
   };
 
+  const animatedRevealStyle = useAnimatedStyle(() => {
+    if (!panX) return { opacity: 0 };
+    const opacity = interpolate(
+      panX.value,
+      [-40, -10, 0],
+      [1, 0.5, 0],
+      Extrapolation.CLAMP
+    );
+    return {
+      opacity,
+    };
+  });
+
   return (
     <>
       <View
@@ -230,6 +259,16 @@ export default function MessageBubble({
           isFromMe ? styles.alignRight : styles.alignLeft,
         ]}
       >
+        {/* Hidden Reveal Time (revealed by sliding flatlist left) */}
+        <Animated.View
+          style={[styles.revealTimeContainer, animatedRevealStyle]}
+          pointerEvents="none"
+        >
+          <Text style={styles.revealTimeText}>
+            {formatRevealTime(message.createdAt)}
+          </Text>
+        </Animated.View>
+
         {/* Bubble */}
         <Pressable onLongPress={handleLongPress} delayLongPress={300}>
           <View
@@ -253,6 +292,7 @@ export default function MessageBubble({
                     marginBottom: 4,
                   }}
                   contentFit="cover"
+                  onLoad={onImageLoad}
                 />
               </Pressable>
             )}
@@ -444,14 +484,14 @@ export default function MessageBubble({
         onRequestClose={() => setIsFullScreen(false)}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={{ position: 'absolute', top: Platform.OS === 'ios' ? 60 : 40, right: 20, flexDirection: 'row', gap: 20, zIndex: 10 }}>
-            <Pressable onPress={handleDownloadImage} style={{ padding: 10 }}>
-              <Ionicons name="download-outline" size={28} color="white" />
-            </Pressable>
-            <Pressable onPress={() => setIsFullScreen(false)} style={{ padding: 10 }}>
-              <Ionicons name="close-outline" size={28} color="white" />
-            </Pressable>
-          </View>
+          {/* Close button only — no download (requires new native build) */}
+          <Pressable
+            onPress={() => setIsFullScreen(false)}
+            style={{ position: 'absolute', top: Platform.OS === 'ios' ? 60 : 40, right: 20, zIndex: 10, padding: 10, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20 }}
+          >
+            <Ionicons name="close-outline" size={28} color="white" />
+          </Pressable>
+
           {message.mediaUrl && (
             <Image
               source={message.mediaUrl}
@@ -473,6 +513,22 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
     wrapper: {
       width: "100%",
       marginBottom: 2,
+    },
+    revealTimeContainer: {
+      position: 'absolute',
+      right: -100, // Sits completely off-screen to the right
+      top: 0,
+      bottom: 0,
+      width: 80,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    revealTimeText: {
+      fontSize: 11,
+      lineHeight: 14,
+      color: colors.mutedForeground,
+      fontWeight: '600',
+      textAlign: 'center',
     },
     alignRight: { alignItems: "flex-end" },
     alignLeft: { alignItems: "flex-start" },

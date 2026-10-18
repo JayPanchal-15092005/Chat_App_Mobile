@@ -21,6 +21,8 @@ import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import {
   ActivityIndicator,
   Alert,
@@ -67,6 +69,33 @@ const ChatDetailScreen = () => {
   const [isRecording, setIsRecording] = useState(false);
 
   const flatListRef = useRef<FlatList<Message>>(null);
+
+  const panX = useSharedValue(0);
+
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-15, 9999]) // only trigger when swiping left
+    .failOffsetY([-15, 15]) // let vertical scrolling take priority
+    .onUpdate((event) => {
+      if (event.translationX < 0) {
+        // limit drag and add rubber-band effect
+        let newX = event.translationX;
+        if (newX < -90) {
+          newX = -90 + (newX + 90) * 0.2; // Rubber band if pulled past 90px
+        }
+        panX.value = newX;
+      } else {
+        panX.value = 0;
+      }
+    })
+    .onFinalize(() => {
+      panX.value = withSpring(0, { damping: 20, stiffness: 200 });
+    });
+
+  const animatedListStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: panX.value }],
+    };
+  });
 
   const { colors } = useTheme();
   const { data: currentUser } = useCurrentUser();
@@ -356,38 +385,50 @@ const ChatDetailScreen = () => {
               iconSize={64}
             />
           ) : (
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              keyExtractor={(item) => item._id}
-              contentContainerStyle={styles.scrollContent}
-              onContentSizeChange={() =>
-                flatListRef.current?.scrollToEnd({ animated: false })
-              }
-              onLayout={() =>
-                flatListRef.current?.scrollToEnd({ animated: false })
-              }
-              renderItem={({ item: message }) => {
-                const senderId =
-                  typeof message.sender === "string"
-                    ? message.sender
-                    : (message.sender as MessageSender)._id;
-                const isFromMe = currentUser
-                  ? senderId === currentUser._id
-                  : false;
+            <GestureDetector gesture={panGesture}>
+              <Animated.View style={[{ flex: 1 }, animatedListStyle]}>
+                <FlatList
+                  ref={flatListRef}
+                  data={messages}
+                  keyExtractor={(item) => item._id}
+                  contentContainerStyle={styles.scrollContent}
+                  onContentSizeChange={() => {
+                    // First scroll — fires when text message is appended
+                    flatListRef.current?.scrollToEnd({ animated: false });
+                    // Second delayed scroll — fires after images finish loading and expand height
+                    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 150);
+                    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 400);
+                  }}
+                  onLayout={() =>
+                    flatListRef.current?.scrollToEnd({ animated: false })
+                  }
+                  renderItem={({ item: message }) => {
+                    const senderId =
+                      typeof message.sender === "string"
+                        ? message.sender
+                        : (message.sender as MessageSender)._id;
+                    const isFromMe = currentUser
+                      ? senderId === currentUser._id
+                      : false;
 
-                return (
-                  <MessageBubble
-                    key={message._id}
-                    message={message}
-                    isFromMe={isFromMe}
-                    chatId={chatId}
-                    currentUserId={currentUser?._id ?? ""}
-                    onReply={handleReply}
-                  />
-                );
-              }}
-            />
+                    return (
+                      <MessageBubble
+                        key={message._id}
+                        message={message}
+                        isFromMe={isFromMe}
+                        chatId={chatId}
+                        currentUserId={currentUser?._id ?? ""}
+                        onReply={handleReply}
+                        onImageLoad={() =>
+                          flatListRef.current?.scrollToEnd({ animated: false })
+                        }
+                        panX={panX}
+                      />
+                    );
+                  }}
+                />
+              </Animated.View>
+            </GestureDetector>
           )}
 
           {/* Reply preview */}
@@ -635,7 +676,7 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       alignItems: "center",
       justifyContent: "center",
     },
-    mainContainer: { flex: 1, backgroundColor: colors.surface.default },
+    mainContainer: { flex: 1, backgroundColor: colors.surface.default, overflow: "hidden" },
     centerContainer: {
       flex: 1,
       alignItems: "center",

@@ -2,8 +2,7 @@ import { Chat, Message, MessageReaction, MessageSender } from "@/types";
 import * as Sentry from "@sentry/react-native";
 import { io, Socket } from "socket.io-client";
 import { create } from "zustand";
-// Import the queryClient singleton directly — avoids the broken pass-through-connect pattern
-import { queryClient } from "@/app/_layout";
+import { queryClient } from "@/lib/queryClient";
 
 const SOCKET_URL = "https://chat-app-backend-zj3i.onrender.com";
 

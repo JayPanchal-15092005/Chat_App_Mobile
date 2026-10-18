@@ -20,6 +20,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const ChatsTab = () => {
   const router = useRouter();
@@ -158,10 +159,11 @@ export default ChatsTab;
 function Header() {
   const router = useRouter();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = makeStyles(colors);
 
   return (
-    <View style={styles.headerContainer}>
+    <View style={[styles.headerContainer, { paddingTop: insets.top + 8 }]}>
       <View style={styles.headerRow}>
         <Text style={styles.headerTitle}>Chats</Text>
         <Pressable
