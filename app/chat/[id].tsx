@@ -1,10 +1,13 @@
 import EmptyUI from "@/components/EmptyUI";
 import MessageBubble from "@/components/MessageBubble";
 import ReplyPreview from "@/components/ReplyPreview";
+import UserItem from "@/components/UserItem";
 import { useAuthStore } from "@/hooks/useAuthStore";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useMessages } from "@/hooks/useMessages";
 import { useTheme } from "@/hooks/useTheme";
+import { useChatDetails, useAddGroupMembers, useLeaveGroupChat } from "@/hooks/useChats";
+import { useUsers } from "@/hooks/useUsers";
 import { getAvatarUrl } from "@/lib/utils";
 import { useCallStore } from "@/lib/callStore";
 import { uploadToImageKit } from "@/lib/imagekit";
@@ -28,8 +31,10 @@ import {
   Alert,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -39,9 +44,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 type ChatParams = {
   id: string;
-  participantId: string;
+  participantId?: string;
   name: string;
   avatar: string;
+  isGroup?: string;
 };
 
 const ChatDetailScreen = () => {
@@ -50,7 +56,18 @@ const ChatDetailScreen = () => {
     avatar,
     name,
     participantId,
+    isGroup,
   } = useLocalSearchParams<ChatParams>();
+
+  const isGroupChat = isGroup === "true";
+  const { data: chatDetails, refetch: refetchChatDetails } = useChatDetails(chatId);
+  const { mutate: addMembers, isPending: isAddingMembers } = useAddGroupMembers();
+  const { mutate: leaveGroup, isPending: isLeavingGroup } = useLeaveGroupChat();
+  const { data: allUsers } = useUsers();
+
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [selectedNewMembers, setSelectedNewMembers] = useState<string[]>([]);
 
   const [messageText, setMessageText] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -296,6 +313,67 @@ const ChatDetailScreen = () => {
     setReplyingTo(msg);
   }, []);
 
+  const handleLeaveGroup = () => {
+    Alert.alert(
+      "Exit Group",
+      "Are you sure you want to exit this group?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Exit Group",
+          style: "destructive",
+          onPress: () => {
+            leaveGroup(chatId, {
+              onSuccess: () => {
+                setShowGroupInfo(false);
+                router.replace("/(tabs)");
+              },
+              onError: (err: any) => {
+                Alert.alert(
+                  "Error",
+                  err?.response?.data?.message || "Failed to leave group."
+                );
+              },
+            });
+          },
+        },
+      ]
+    );
+  };
+
+  const handleConfirmAddMembers = () => {
+    if (selectedNewMembers.length === 0) return;
+    addMembers(
+      { chatId, memberIds: selectedNewMembers },
+      {
+        onSuccess: () => {
+          setSelectedNewMembers([]);
+          setShowAddMember(false);
+          refetchChatDetails();
+          Alert.alert("Success", "New members added to the group!");
+        },
+        onError: (err: any) => {
+          Alert.alert(
+            "Error",
+            err?.response?.data?.message || "Failed to add members."
+          );
+        },
+      }
+    );
+  };
+
+  const currentMemberIds = new Set(
+    (chatDetails?.participants || []).map((p: any) => p._id?.toString() || p.toString())
+  );
+  const eligibleNewUsers = (allUsers || []).filter(
+    (u: any) => !currentMemberIds.has(u._id)
+  );
+
+  const adminId =
+    typeof chatDetails?.groupAdmin === "object"
+      ? (chatDetails?.groupAdmin as any)?._id
+      : chatDetails?.groupAdmin;
+
   const styles = makeStyles(colors);
 
   return (
@@ -313,8 +391,19 @@ const ChatDetailScreen = () => {
           />
         </Pressable>
 
-        <View style={styles.headerInfo}>
-          {avatar && <Image source={getAvatarUrl(name, avatar)} style={styles.headerAvatar} />}
+        <Pressable
+          style={styles.headerInfo}
+          onPress={() => {
+            if (isGroupChat) setShowGroupInfo(true);
+          }}
+        >
+          {avatar ? (
+            <Image
+              source={isGroupChat ? avatar : getAvatarUrl(name, avatar)}
+              style={styles.headerAvatar}
+              contentFit="cover"
+            />
+          ) : null}
           <View style={styles.headerTextWrapper}>
             <Text style={styles.headerName} numberOfLines={1}>
               {name}
@@ -325,14 +414,26 @@ const ChatDetailScreen = () => {
                 isTyping ? styles.textPrimary : styles.textMuted,
               ]}
             >
-              {isTyping ? "typing..." : isOnline ? "Online" : "Offline"}
+              {isTyping
+                ? "typing..."
+                : isGroupChat
+                ? `${chatDetails?.participants?.length || 2} members • tap for info`
+                : isOnline
+                ? "Online"
+                : "Offline"}
             </Text>
           </View>
-        </View>
+        </Pressable>
 
         <View style={styles.headerActions}>
           <Pressable
-            onPress={() => startCall(participantId, name, getAvatarUrl(name, avatar) || "")}
+            onPress={() => {
+              if (isGroupChat) {
+                Alert.alert("Group Calls", "Group calls will be available in the next update!");
+              } else {
+                startCall(participantId || "", name, getAvatarUrl(name, avatar) || "");
+              }
+            }}
             style={({ pressed }) => [
               styles.actionButton,
               pressed && styles.pressedState,
@@ -423,6 +524,7 @@ const ChatDetailScreen = () => {
                           flatListRef.current?.scrollToEnd({ animated: false })
                         }
                         panX={panX}
+                        isGroup={isGroupChat}
                       />
                     );
                   }}
@@ -635,6 +737,203 @@ const ChatDetailScreen = () => {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      {/* ─── GROUP INFO MODAL ─── */}
+      <Modal
+        visible={showGroupInfo}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowGroupInfo(false)}
+      >
+        <SafeAreaView style={styles.modalSafeArea} edges={["top", "bottom"]}>
+          <View style={styles.groupModalHeader}>
+            <Pressable
+              onPress={() => setShowGroupInfo(false)}
+              style={styles.modalCloseBtn}
+            >
+              <Ionicons name="close" size={22} color={colors.foreground} />
+            </Pressable>
+            <Text style={styles.groupModalTitle}>Group Info</Text>
+            <View style={{ width: 36 }} />
+          </View>
+
+          <ScrollView
+            style={styles.groupInfoScroll}
+            contentContainerStyle={styles.groupInfoScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Group Hero */}
+            <View style={styles.groupHeroSection}>
+              <Image
+                source={avatar ? avatar : getAvatarUrl(name, null)}
+                style={styles.groupHeroAvatar}
+                contentFit="cover"
+              />
+              <Text style={styles.groupHeroName}>{name}</Text>
+              <Text style={styles.groupHeroSub}>
+                Group • {chatDetails?.participants?.length || 0} participants
+              </Text>
+            </View>
+
+            {/* Participants Section */}
+            <View style={styles.participantsSection}>
+              <View style={styles.participantsSectionHeader}>
+                <Text style={styles.sectionHeaderTitle}>
+                  {chatDetails?.participants?.length || 0} PARTICIPANTS
+                </Text>
+                <Pressable
+                  style={styles.addMemberHeaderBtn}
+                  onPress={() => setShowAddMember(true)}
+                >
+                  <Ionicons name="person-add" size={15} color={colors.primary.default} />
+                  <Text style={styles.addMemberHeaderBtnText}>Add</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.membersCard}>
+                {(chatDetails?.participants || []).map((participant: any, index: number) => {
+                  const isUserAdmin =
+                    participant._id === adminId ||
+                    participant === adminId;
+
+                  return (
+                    <View
+                      key={participant._id || index}
+                      style={[
+                        styles.memberRow,
+                        index < (chatDetails?.participants?.length || 1) - 1 &&
+                          styles.memberRowBorder,
+                      ]}
+                    >
+                      <Image
+                        source={getAvatarUrl(participant.name, participant.avatar)}
+                        style={styles.memberAvatar}
+                        contentFit="cover"
+                      />
+                      <View style={styles.memberInfo}>
+                        <Text style={styles.memberName} numberOfLines={1}>
+                          {participant.name}
+                          {participant._id === currentUser?._id ? " (You)" : ""}
+                        </Text>
+                        <Text style={styles.memberEmail} numberOfLines={1}>
+                          {participant.email}
+                        </Text>
+                      </View>
+                      {isUserAdmin && (
+                        <View style={styles.adminBadge}>
+                          <Text style={styles.adminBadgeText}>Group Admin</Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Exit Group Button */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.exitGroupButton,
+                pressed && styles.pressedState,
+                isLeavingGroup && { opacity: 0.5 },
+              ]}
+              onPress={handleLeaveGroup}
+              disabled={isLeavingGroup}
+            >
+              {isLeavingGroup ? (
+                <ActivityIndicator size="small" color="#EF4444" />
+              ) : (
+                <>
+                  <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+                  <Text style={styles.exitGroupText}>Exit Group</Text>
+                </>
+              )}
+            </Pressable>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ─── ADD MEMBERS MODAL ─── */}
+      <Modal
+        visible={showAddMember}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          setShowAddMember(false);
+          setSelectedNewMembers([]);
+        }}
+      >
+        <SafeAreaView style={styles.modalSafeArea} edges={["top", "bottom"]}>
+          <View style={styles.groupModalHeader}>
+            <Pressable
+              onPress={() => {
+                setShowAddMember(false);
+                setSelectedNewMembers([]);
+              }}
+              style={styles.modalCloseBtn}
+            >
+              <Ionicons name="arrow-back" size={22} color={colors.foreground} />
+            </Pressable>
+            <View style={{ flex: 1, alignItems: "center" }}>
+              <Text style={styles.groupModalTitle}>Add Participants</Text>
+              <Text style={styles.groupHeroSub}>
+                {selectedNewMembers.length} selected
+              </Text>
+            </View>
+            <Pressable
+              style={[
+                styles.confirmAddBtn,
+                (selectedNewMembers.length === 0 || isAddingMembers) &&
+                  styles.confirmAddBtnDisabled,
+              ]}
+              onPress={handleConfirmAddMembers}
+              disabled={selectedNewMembers.length === 0 || isAddingMembers}
+            >
+              {isAddingMembers ? (
+                <ActivityIndicator size="small" color="#000" />
+              ) : (
+                <Text style={styles.confirmAddBtnText}>Done</Text>
+              )}
+            </Pressable>
+          </View>
+
+          <ScrollView
+            style={styles.groupInfoScroll}
+            contentContainerStyle={styles.groupInfoScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {eligibleNewUsers.length === 0 ? (
+              <View style={styles.noEligibleUsers}>
+                <Ionicons name="checkmark-done-circle-outline" size={54} color={colors.primary.default} />
+                <Text style={styles.noEligibleTitle}>All contacts are in this group</Text>
+                <Text style={styles.noEligibleSub}>
+                  There are no other registered users to add.
+                </Text>
+              </View>
+            ) : (
+              eligibleNewUsers.map((user: any) => {
+                const isSelected = selectedNewMembers.includes(user._id);
+                return (
+                  <UserItem
+                    key={user._id}
+                    user={user}
+                    isOnline={onlineUsers.has(user._id)}
+                    showSelection
+                    isSelected={isSelected}
+                    onPress={() => {
+                      setSelectedNewMembers((prev) =>
+                        prev.includes(user._id)
+                          ? prev.filter((id) => id !== user._id)
+                          : [...prev, user._id]
+                      );
+                    }}
+                  />
+                );
+              })
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -763,6 +1062,186 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       backgroundColor: colors.surface.card,
       borderTopWidth: 1,
       borderTopColor: colors.surface.light,
+    },
+    modalSafeArea: {
+      flex: 1,
+      backgroundColor: colors.surface.default,
+    },
+    groupModalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.surface.light,
+    },
+    modalCloseBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.surface.card,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    groupModalTitle: {
+      fontSize: 17,
+      fontWeight: "700",
+      color: colors.foreground,
+    },
+    groupInfoScroll: {
+      flex: 1,
+    },
+    groupInfoScrollContent: {
+      paddingBottom: 40,
+    },
+    groupHeroSection: {
+      alignItems: "center",
+      paddingVertical: 24,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.surface.light,
+    },
+    groupHeroAvatar: {
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+      marginBottom: 12,
+    },
+    groupHeroName: {
+      fontSize: 20,
+      fontWeight: "700",
+      color: colors.foreground,
+    },
+    groupHeroSub: {
+      fontSize: 13,
+      color: colors.mutedForeground,
+      marginTop: 4,
+    },
+    participantsSection: {
+      paddingHorizontal: 16,
+      marginTop: 20,
+    },
+    participantsSectionHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 10,
+    },
+    sectionHeaderTitle: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.subtleForeground,
+      letterSpacing: 0.8,
+    },
+    addMemberHeaderBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: `${colors.primary.default}15`,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 12,
+    },
+    addMemberHeaderBtnText: {
+      fontSize: 12,
+      fontWeight: "600",
+      color: colors.primary.default,
+    },
+    membersCard: {
+      backgroundColor: colors.surface.card,
+      borderRadius: 16,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: colors.surface.light,
+    },
+    memberRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    memberRowBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.surface.light,
+    },
+    memberAvatar: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+    },
+    memberInfo: {
+      flex: 1,
+      marginLeft: 12,
+    },
+    memberName: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: colors.foreground,
+    },
+    memberEmail: {
+      fontSize: 12,
+      color: colors.mutedForeground,
+      marginTop: 2,
+    },
+    adminBadge: {
+      backgroundColor: `${colors.primary.default}20`,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+    },
+    adminBadgeText: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.primary.default,
+    },
+    exitGroupButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      marginTop: 28,
+      marginHorizontal: 16,
+      paddingVertical: 14,
+      backgroundColor: "rgba(239, 68, 68, 0.1)",
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: "rgba(239, 68, 68, 0.2)",
+    },
+    exitGroupText: {
+      color: "#EF4444",
+      fontSize: 15,
+      fontWeight: "600",
+    },
+    confirmAddBtn: {
+      backgroundColor: colors.primary.default,
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: 16,
+    },
+    confirmAddBtnDisabled: {
+      opacity: 0.4,
+    },
+    confirmAddBtnText: {
+      color: "#000000",
+      fontWeight: "700",
+      fontSize: 13,
+    },
+    noEligibleUsers: {
+      alignItems: "center",
+      paddingVertical: 48,
+      paddingHorizontal: 20,
+    },
+    noEligibleTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: colors.foreground,
+      marginTop: 12,
+    },
+    noEligibleSub: {
+      fontSize: 13,
+      color: colors.mutedForeground,
+      textAlign: "center",
+      marginTop: 6,
     },
   });
 

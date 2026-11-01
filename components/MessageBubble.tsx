@@ -69,6 +69,7 @@ interface MessageBubbleProps {
   onReply: (message: Message) => void;
   onImageLoad?: () => void;
   panX?: SharedValue<number>;
+  isGroup?: boolean;
 }
 
 export default function MessageBubble({
@@ -79,6 +80,7 @@ export default function MessageBubble({
   onReply,
   onImageLoad,
   panX,
+  isGroup,
 }: MessageBubbleProps) {
   const { colors } = useTheme();
   const { reactToMessage, editMessage, deleteMessage } = useSocketStore();
@@ -277,6 +279,13 @@ export default function MessageBubble({
               isFromMe ? styles.bubbleFromMe : styles.bubbleFromOther,
             ]}
           >
+            {/* ── Group sender name (WhatsApp style) ── */}
+            {isGroup && !isFromMe && typeof message.sender !== "string" && (
+              <Text style={styles.groupSenderName}>
+                {(message.sender as MessageSender)?.name || "Member"}
+              </Text>
+            )}
+
             {/* ── Reply quote ── */}
             <ReplyQuote />
 
@@ -541,6 +550,12 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       paddingBottom: 6,
       borderRadius: 18,
       flexShrink: 1,
+    },
+    groupSenderName: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.primary.default,
+      marginBottom: 3,
     },
     bubbleFromMe: {
       backgroundColor: colors.primary.default,

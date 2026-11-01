@@ -16,15 +16,21 @@ const ChatItem = ({
   onPress: () => void;
   onLongPress?: () => void;
 }) => {
+  const isGroup = chat.isGroup ?? false;
   const participant = chat.participant;
   const { colors } = useTheme();
 
   const { onlineUsers, typingUsers, unreadChats } = useSocketStore();
 
-  const isOnline = onlineUsers.has(participant._id);
-  const isTyping = typingUsers.get(chat._id) === participant._id;
+  const isOnline = !isGroup && participant ? onlineUsers.has(participant._id) : false;
+  const isTyping = !isGroup && participant ? typingUsers.get(chat._id) === participant._id : false;
   const hasUnread = unreadChats.has(chat._id);
   const isPinned = chat.isPinned ?? false;
+
+  const displayName = isGroup ? chat.groupName || "Group" : participant?.name || "Chat";
+  const displayAvatar = isGroup
+    ? chat.groupAvatar || getAvatarUrl(chat.groupName, null)
+    : getAvatarUrl(participant?.name, participant?.avatar);
 
   const styles = makeStyles(colors);
 
@@ -46,10 +52,15 @@ const ChatItem = ({
         </View>
       )}
 
-      {/* Avatar & online indicator */}
+      {/* Avatar & online / group indicator */}
       <View style={styles.avatarWrapper}>
-        <Image source={getAvatarUrl(participant.name, participant.avatar)} style={styles.avatarImage} />
+        <Image source={displayAvatar} style={styles.avatarImage} contentFit="cover" />
         {isOnline && <View style={styles.onlineIndicator} />}
+        {isGroup && (
+          <View style={styles.groupBadge}>
+            <Ionicons name="people" size={10} color="#FFFFFF" />
+          </View>
+        )}
       </View>
 
       {/* Chat info */}
@@ -63,7 +74,7 @@ const ChatItem = ({
               ]}
               numberOfLines={1}
             >
-              {participant.name}
+              {displayName}
             </Text>
           </View>
 
@@ -140,6 +151,19 @@ const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
       borderRadius: 8,
       borderWidth: 3,
       borderColor: colors.surface.default,
+    },
+    groupBadge: {
+      position: "absolute",
+      bottom: -2,
+      right: -2,
+      width: 18,
+      height: 18,
+      backgroundColor: colors.primary.default,
+      borderRadius: 9,
+      borderWidth: 2,
+      borderColor: colors.surface.default,
+      alignItems: "center",
+      justifyContent: "center",
     },
     chatInfo: {
       flex: 1,

@@ -41,13 +41,21 @@ const ChatsTab = () => {
     : [];
 
   const handleChatPress = (chat: Chat) => {
+    const isGroup = chat.isGroup ?? false;
+    const name = isGroup ? chat.groupName || "Group" : chat.participant?.name || "Chat";
+    const avatar = isGroup
+      ? chat.groupAvatar || getAvatarUrl(chat.groupName, null)
+      : getAvatarUrl(chat.participant?.name, chat.participant?.avatar);
+    const participantId = isGroup ? "" : chat.participant?._id || "";
+
     router.push({
       pathname: "/chat/[id]",
       params: {
         id: chat._id,
-        participantId: chat.participant._id,
-        name: chat.participant.name,
-        avatar: getAvatarUrl(chat.participant.name, chat.participant.avatar),
+        participantId,
+        name,
+        avatar,
+        isGroup: isGroup ? "true" : "false",
       },
     });
   };
@@ -76,6 +84,7 @@ const ChatsTab = () => {
   const handleChatLongPress = useCallback(
     (chat: Chat) => {
       const pinLabel = chat.isPinned ? "Unpin Chat" : "Pin Chat";
+      const title = chat.isGroup ? chat.groupName || "Group" : chat.participant?.name || "Chat";
 
       if (Platform.OS === "ios") {
         ActionSheetIOS.showActionSheetWithOptions(
@@ -89,7 +98,7 @@ const ChatsTab = () => {
         );
       } else {
         Alert.alert(
-          chat.participant.name,
+          title,
           undefined,
           [
             { text: pinLabel, onPress: () => handleTogglePin(chat) },

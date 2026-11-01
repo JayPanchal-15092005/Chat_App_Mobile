@@ -1,34 +1,34 @@
 import React, { createContext, useCallback, useContext, useState } from "react";
 
 // ─────────────────────────────────────────────
-// Color Palettes
+// Color Palettes (Refined with Palette 1: Midnight Twilight & Amber Gold)
 // ─────────────────────────────────────────────
 
 export const DarkColors = {
   primary: {
-    default: "#F4A261",
-    light: "#F4B183",
-    dark: "#E76F51",
-    soft: "#FFD7BA",
+    default: "#F4A62A", // Palette 1: Amber Gold
+    light: "#F7BE6D",
+    dark: "#D68612",
+    soft: "#F0D9B5", // Palette 1: Champagne Cream
   },
   surface: {
-    default: "#1A1A1D",
-    light: "#2D2D30",
-    dark: "#0D0D0F",
-    card: "#242428",
+    default: "#1A1A1F", // Palette 1: Deep Midnight
+    light: "#2D2B55",   // Palette 1: Twilight Navy
+    dark: "#111116",    // Deepest Midnight
+    card: "#23223D",    // Rich Midnight Card
   },
   foreground: "#FFFFFF",
-  mutedForeground: "#A0A0A5",
-  subtleForeground: "#6B6B70",
+  mutedForeground: "#A8A6BC",
+  subtleForeground: "#6F6D85",
   isDark: true,
 } as const;
 
 export const LightColors = {
   primary: {
     default: "#E76F51",
-    light: "#F4A261",
+    light: "#F4A62A",
     dark: "#C55A3C",
-    soft: "#FFD7BA",
+    soft: "#F0D9B5",
   },
   surface: {
     default: "#F5F5F7",

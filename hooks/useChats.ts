@@ -37,3 +37,76 @@ export const useGetOrCreateChat = () => {
     },
   });
 };
+
+export const useCreateGroupChat = () => {
+  const { apiWithAuth } = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: { name: string; participantIds: string[]; avatar?: string }) => {
+      const { data } = await apiWithAuth<Chat>({
+        method: "POST",
+        url: "/chats/group",
+        data: payload,
+      });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] });
+    },
+  });
+};
+
+export const useAddGroupMembers = () => {
+  const { apiWithAuth } = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ chatId, memberIds }: { chatId: string; memberIds: string[] }) => {
+      const { data } = await apiWithAuth<Chat>({
+        method: "PATCH",
+        url: `/chats/${chatId}/members`,
+        data: { memberIds },
+      });
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] });
+      queryClient.invalidateQueries({ queryKey: ["chatDetails", variables.chatId] });
+    },
+  });
+};
+
+export const useLeaveGroupChat = () => {
+  const { apiWithAuth } = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (chatId: string) => {
+      const { data } = await apiWithAuth({
+        method: "PATCH",
+        url: `/chats/${chatId}/leave`,
+      });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] });
+    },
+  });
+};
+
+export const useChatDetails = (chatId: string) => {
+  const { apiWithAuth } = useApi();
+
+  return useQuery({
+    queryKey: ["chatDetails", chatId],
+    queryFn: async () => {
+      const { data } = await apiWithAuth<Chat>({
+        method: "GET",
+        url: `/chats/${chatId}`,
+      });
+      return data;
+    },
+    enabled: !!chatId,
+  });
+};
