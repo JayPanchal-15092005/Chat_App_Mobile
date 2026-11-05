@@ -33,17 +33,28 @@ const SocketConnection = () => {
       ensureConnected();
     }
 
-    // 4. Listen for background/foreground transitions
+    // 4. Listen for background/foreground transitions with grace period
+    let backgroundTimer: ReturnType<typeof setTimeout> | null = null;
+
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {
+        if (backgroundTimer) {
+          clearTimeout(backgroundTimer);
+          backgroundTimer = null;
+        }
         ensureConnected();
       } else if (state === "background") {
-        // Render spins down unused sockets anyway, but explicit disconnect saves mobile battery
-        disconnect();
+        // 30s grace period so quick app switching (camera, photos, notifications) keeps socket alive
+        if (backgroundTimer) clearTimeout(backgroundTimer);
+        backgroundTimer = setTimeout(() => {
+          disconnect();
+          backgroundTimer = null;
+        }, 30000);
       }
     });
 
     return () => {
+      if (backgroundTimer) clearTimeout(backgroundTimer);
       sub.remove();
       disconnect();
     };

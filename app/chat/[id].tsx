@@ -177,7 +177,7 @@ const ChatDetailScreen = () => {
   );
 
   const handleSend = () => {
-    if (!messageText.trim() || isSending || !isConnected || !currentUser)
+    if (!messageText.trim() || isSending || !currentUser)
       return;
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);

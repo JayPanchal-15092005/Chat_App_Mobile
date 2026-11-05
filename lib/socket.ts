@@ -6,6 +6,23 @@ import { queryClient } from "@/lib/queryClient";
 
 const SOCKET_URL = "https://chat-app-backend-zj3i.onrender.com";
 
+let pendingOutboundMessages: Array<{
+  chatId: string;
+  text: string;
+  replyToId?: string;
+  type?: "text" | "image" | "voice";
+  mediaUrl?: string;
+}> = [];
+
+const flushPendingMessages = (socket: Socket) => {
+  if (!socket.connected || pendingOutboundMessages.length === 0) return;
+  const messagesToSend = [...pendingOutboundMessages];
+  pendingOutboundMessages = [];
+  for (const msg of messagesToSend) {
+    socket.emit("send-message", msg);
+  }
+};
+
 interface SocketState {
   socket: Socket | null;
   isConnected: boolean;
@@ -40,12 +57,30 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     if (existingSocket?.connected) return;
     if (existingSocket) existingSocket.disconnect();
 
-    const socket = io(SOCKET_URL, { auth: { token } });
+    const socket = io(SOCKET_URL, {
+      auth: { token },
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 2000,
+      timeout: 10000,
+    });
 
     socket.on("connect", () => {
       console.log("Socket connected:", socket.id);
-      console.log("Socket connected", { socketId: socket.id });
       set({ isConnected: true });
+
+      // Re-join active chat and refetch messages to catch any messages missed while disconnected
+      const { currentChatId } = get();
+      if (currentChatId) {
+        socket.emit("join-chat", currentChatId);
+        queryClient.invalidateQueries({ queryKey: ["messages", currentChatId] });
+      }
+      queryClient.invalidateQueries({ queryKey: ["chats"] });
+
+      // Automatically flush any pending outbound messages
+      flushPendingMessages(socket);
     });
 
     socket.on("disconnect", () => {
@@ -219,7 +254,6 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
   sendMessage: (chatId, text, currentUser, replyToId, type = "text", mediaUrl = "") => {
     const { socket } = get();
-    if (!socket?.connected) return;
 
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage: Message = {
@@ -242,7 +276,16 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       return [...old, optimisticMessage];
     });
 
-    socket.emit("send-message", { chatId, text, replyToId, type, mediaUrl });
+    const payload = { chatId, text, replyToId, type, mediaUrl };
+
+    if (socket?.connected) {
+      socket.emit("send-message", payload);
+    } else {
+      pendingOutboundMessages.push(payload);
+      if (socket && !socket.connected) {
+        socket.connect();
+      }
+    }
 
     console.log("Message sent", { chatId, messageLength: text.length });
 
@@ -252,9 +295,9 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         if (!old) return [];
         return old.filter((m) => m._id !== tempId);
       });
-      socket.off("socket-error", errorHandler);
+      socket?.off("socket-error", errorHandler);
     };
-    socket.once("socket-error", errorHandler);
+    socket?.once("socket-error", errorHandler);
   },
 
   sendTyping: (chatId, isTyping) => {
