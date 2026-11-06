@@ -137,17 +137,23 @@ const ChatDetailScreen = () => {
 
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Join chat room & mark delivered/seen on mount
+  // Join chat room on mount, leave on unmount
   useEffect(() => {
-    if (chatId && isConnected) {
+    if (chatId) {
       joinChat(chatId);
-      markDelivered(chatId);
-      markSeen(chatId);
     }
     return () => {
       if (chatId) leaveChat(chatId);
     };
-  }, [chatId, isConnected, joinChat, leaveChat, markDelivered, markSeen]);
+  }, [chatId, joinChat, leaveChat]);
+
+  // Mark delivered and seen whenever connected
+  useEffect(() => {
+    if (chatId && isConnected) {
+      markDelivered(chatId);
+      markSeen(chatId);
+    }
+  }, [chatId, isConnected, markDelivered, markSeen]);
 
   // Mark seen when new messages arrive while chat is open
   useEffect(() => {

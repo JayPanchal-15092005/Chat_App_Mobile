@@ -71,11 +71,10 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       console.log("Socket connected:", socket.id);
       set({ isConnected: true });
 
-      // Re-join active chat and refetch messages to catch any messages missed while disconnected
+      // Re-join active chat room
       const { currentChatId } = get();
       if (currentChatId) {
         socket.emit("join-chat", currentChatId);
-        queryClient.invalidateQueries({ queryKey: ["messages", currentChatId] });
       }
       queryClient.invalidateQueries({ queryKey: ["chats"] });
 
@@ -110,20 +109,46 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
     // ── New message ──────────────────────────────────────────────────
     socket.on("new-message", (message: Message) => {
-      const senderId = (message.sender as MessageSender)._id;
+      const chatId =
+        typeof message.chat === "string"
+          ? message.chat
+          : (message.chat as any)?._id;
+      const senderId =
+        typeof message.sender === "string"
+          ? message.sender
+          : (message.sender as MessageSender)._id;
       const { currentChatId } = get();
 
-      queryClient.setQueryData<Message[]>(["messages", message.chat], (old) => {
+      queryClient.setQueryData<Message[]>(["messages", chatId], (old) => {
         if (!old) return [message];
-        const filtered = old.filter((m) => !m._id.startsWith("temp-"));
-        if (filtered.some((m) => m._id === message._id)) return filtered;
-        return [...filtered, message];
+        // If message already exists by real server _id, keep list as is
+        if (old.some((m) => m._id === message._id)) return old;
+
+        // Find and replace ONLY the specific matching optimistic message
+        let replaced = false;
+        const updated = old.map((m) => {
+          if (!replaced && m._id.startsWith("temp-")) {
+            const mSenderId =
+              typeof m.sender === "string"
+                ? m.sender
+                : (m.sender as MessageSender)._id;
+
+            if (mSenderId === senderId && m.text === message.text) {
+              replaced = true;
+              return message;
+            }
+          }
+          return m;
+        });
+
+        if (replaced) return updated;
+        return [...updated, message];
       });
 
       queryClient.setQueryData<Chat[]>(["chats"], (oldChats) => {
         if (!oldChats) return oldChats;
         return oldChats.map((chat) => {
-          if (chat._id === message.chat) {
+          if (chat._id === chatId) {
             return {
               ...chat,
               lastMessage: {
@@ -142,19 +167,19 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       // Also invalidate so fresh data is fetched if cache was cold
       queryClient.invalidateQueries({ queryKey: ["chats"] });
 
-      if (currentChatId !== message.chat) {
+      if (currentChatId !== chatId) {
         const chats = queryClient.getQueryData<Chat[]>(["chats"]);
-        const chat = chats?.find((c) => c._id === message.chat);
+        const chat = chats?.find((c) => c._id === chatId);
         if (chat?.participant && senderId === chat.participant._id) {
           set((state) => ({
-            unreadChats: new Set([...state.unreadChats, message.chat]),
+            unreadChats: new Set([...state.unreadChats, chatId]),
           }));
         }
       }
 
       set((state) => {
         const typingUsers = new Map(state.typingUsers);
-        typingUsers.delete(message.chat);
+        typingUsers.delete(chatId);
         return { typingUsers };
       });
     });
@@ -255,7 +280,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   sendMessage: (chatId, text, currentUser, replyToId, type = "text", mediaUrl = "") => {
     const { socket } = get();
 
-    const tempId = `temp-${Date.now()}`;
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimisticMessage: Message = {
       _id: tempId,
       chat: chatId,
@@ -288,16 +313,6 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     }
 
     console.log("Message sent", { chatId, messageLength: text.length });
-
-    const errorHandler = (error: { message: string }) => {
-      console.error("Failed to send message", { chatId, error: error.message });
-      queryClient.setQueryData<Message[]>(["messages", chatId], (old) => {
-        if (!old) return [];
-        return old.filter((m) => m._id !== tempId);
-      });
-      socket?.off("socket-error", errorHandler);
-    };
-    socket?.once("socket-error", errorHandler);
   },
 
   sendTyping: (chatId, isTyping) => {

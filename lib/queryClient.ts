@@ -1,16 +1,11 @@
-import { QueryClient, focusManager } from "@tanstack/react-query";
-import { AppState, type AppStateStatus, Platform } from "react-native";
+import { QueryClient } from "@tanstack/react-query";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: 1000 * 30, // 30 seconds default
     },
   },
-});
-
-AppState.addEventListener("change", (status: AppStateStatus) => {
-  if (Platform.OS !== "web") {
-    focusManager.setFocused(status === "active");
-  }
 });
