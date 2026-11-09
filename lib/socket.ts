@@ -54,9 +54,13 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
   connect: (token) => {
     const existingSocket = get().socket;
-    if (existingSocket?.connected) return;
-    if (existingSocket) existingSocket.disconnect();
+    if (existingSocket) {
+      if (existingSocket.connected) return;
+      existingSocket.connect();
+      return;
+    }
 
+    console.log("[Socket] Connecting to:", SOCKET_URL);
     const socket = io(SOCKET_URL, {
       auth: { token },
       transports: ["websocket"],
@@ -68,7 +72,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     });
 
     socket.on("connect", () => {
-      console.log("Socket connected:", socket.id);
+      console.log("[Socket] Connected! Socket ID:", socket.id);
       set({ isConnected: true });
 
       // Re-join active chat room
@@ -82,8 +86,12 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       flushPendingMessages(socket);
     });
 
-    socket.on("disconnect", () => {
-      console.log("Socket disconnected:", socket.id);
+    socket.on("connect_error", (error) => {
+      console.error("[Socket] Connection error:", error.message);
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("[Socket] Disconnected, reason:", reason);
       set({ isConnected: false });
     });
 
@@ -305,14 +313,14 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
     if (socket?.connected) {
       socket.emit("send-message", payload);
+      console.log("[Socket] Message emitted to server", { chatId, messageLength: text.length });
     } else {
+      console.warn("[Socket] Not connected! Message queued for delivery on connect", { chatId });
       pendingOutboundMessages.push(payload);
-      if (socket && !socket.connected) {
+      if (socket) {
         socket.connect();
       }
     }
-
-    console.log("Message sent", { chatId, messageLength: text.length });
   },
 
   sendTyping: (chatId, isTyping) => {

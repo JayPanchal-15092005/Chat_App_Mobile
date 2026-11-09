@@ -10,55 +10,35 @@ import { AppState } from "react-native";
 const SocketConnection = () => {
   const connect = useSocketStore((s) => s.connect);
   const disconnect = useSocketStore((s) => s.disconnect);
-  const { token, user } = useAuthStore();
+  const token = useAuthStore((s) => s.token);
 
   useEffect(() => {
     // 1. If signed out, ensure disconnected
-    if (!token || !user) {
+    if (!token) {
       disconnect();
       return;
     }
 
-    // 2. We are signed in. Define exactly how to connect using custom JWT.
-    const ensureConnected = async () => {
-      try {
-        connect(token);
-      } catch (error) {
-        console.error("[SocketConnection] Failed to get custom token:", error);
-      }
-    };
+    // 2. We are signed in. Connect immediately.
+    console.log("[SocketConnection] Signed in with token, connecting socket...");
+    connect(token);
 
-    // 3. Connect immediately if app is in foreground
-    if (AppState.currentState === "active") {
-      ensureConnected();
-    }
-
-    // 4. Listen for background/foreground transitions with grace period
-    let backgroundTimer: ReturnType<typeof setTimeout> | null = null;
-
+    // 3. Listen for app foregrounding to re-check connection
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {
-        if (backgroundTimer) {
-          clearTimeout(backgroundTimer);
-          backgroundTimer = null;
-        }
-        ensureConnected();
-      } else if (state === "background") {
-        // 30s grace period so quick app switching (camera, photos, notifications) keeps socket alive
-        if (backgroundTimer) clearTimeout(backgroundTimer);
-        backgroundTimer = setTimeout(() => {
-          disconnect();
-          backgroundTimer = null;
-        }, 30000);
+        console.log("[SocketConnection] App became active, ensuring socket is connected...");
+        connect(token);
       }
     });
 
     return () => {
-      if (backgroundTimer) clearTimeout(backgroundTimer);
       sub.remove();
-      disconnect();
+      // Only disconnect on unmount if token is actually gone
+      if (!useAuthStore.getState().token) {
+        disconnect();
+      }
     };
-  }, [token, user, connect, disconnect]);
+  }, [token, connect, disconnect]);
 
   return null;
 };
