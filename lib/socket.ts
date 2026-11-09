@@ -63,7 +63,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     console.log("[Socket] Connecting to:", SOCKET_URL);
     const socket = io(SOCKET_URL, {
       auth: { token },
-      transports: ["websocket"],
+      transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 500,
