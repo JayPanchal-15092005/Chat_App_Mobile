@@ -38,8 +38,8 @@ export const useMessages = (chatId: string) => {
       return [...data, ...unconfirmedPending];
     },
     enabled: !!chatId,
-    staleTime: 1000 * 60 * 5, // 5 minutes (real-time messages arrive via WebSocket)
+    staleTime: 0, // Always consider stale so navigating into chat always gets fresh data
     refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    refetchOnReconnect: true,
   });
 };

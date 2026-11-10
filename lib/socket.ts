@@ -153,6 +153,10 @@ export const useSocketStore = create<SocketState>((set, get) => ({
         return [...updated, message];
       });
 
+      // Always invalidate messages cache for this chat so when user navigates
+      // into the chat they get fresh data (fixes the "5 min delay" bug for recipients)
+      queryClient.invalidateQueries({ queryKey: ["messages", chatId] });
+
       queryClient.setQueryData<Chat[]>(["chats"], (oldChats) => {
         if (!oldChats) return oldChats;
         return oldChats.map((chat) => {
@@ -175,14 +179,11 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       // Also invalidate so fresh data is fetched if cache was cold
       queryClient.invalidateQueries({ queryKey: ["chats"] });
 
+      // Mark chat as unread for both DM and group chats
       if (currentChatId !== chatId) {
-        const chats = queryClient.getQueryData<Chat[]>(["chats"]);
-        const chat = chats?.find((c) => c._id === chatId);
-        if (chat?.participant && senderId === chat.participant._id) {
-          set((state) => ({
-            unreadChats: new Set([...state.unreadChats, chatId]),
-          }));
-        }
+        set((state) => ({
+          unreadChats: new Set([...state.unreadChats, chatId]),
+        }));
       }
 
       set((state) => {
